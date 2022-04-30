@@ -1,6 +1,8 @@
 use std::{env, fs, process};
 use std::io::{self, Read, Write};
 
+use oxlox::scanner::Scanner;
+
 
 /// Run a script or start the REPL
 ///
@@ -44,8 +46,8 @@ fn run_repl() -> io::Result<()> {
                     println!("\nexiting...");
                     return Ok(());
                 }
-                println!("[read {} bytes]", n);
-                println!("[eval] {}", input.trim());
+                println!("[debug] read {} bytes", n);
+                run(input.trim())?;
                 input.clear();
             },
             Err(e) => {
@@ -55,12 +57,21 @@ fn run_repl() -> io::Result<()> {
     }
 }
 
-/// Run a script
+/// Start the interpreter on a script
 fn run_script(path: &str) -> io::Result<()> {
     let mut file = fs::File::open(path)?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;
-    println!("script path: {}", path);
-    println!("script content:\n{}", content);
+    run(&content)
+}
+
+/// Interpret a script
+fn run(script: &str) -> io::Result<()> {
+    let scanner = Scanner::new(script.to_string());
+    let tokens = scanner.scan();
+    println!("[debug] eval");
+    for tok in tokens {
+        println!("{:?}", tok);
+    }
     Ok(())
 }
