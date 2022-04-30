@@ -67,7 +67,7 @@ fn run_script(path: &str) -> io::Result<()> {
 
 /// Interpret a script
 fn run(script: &str) -> io::Result<()> {
-    let scanner = Scanner::new(script.to_string());
+    let mut scanner = Scanner::new(script.to_string());
     let tokens = scanner.scan();
     println!("[debug] eval");
     for tok in tokens {
