@@ -1,9 +1,7 @@
 use std::char;
 
-#[derive(Debug)]
-pub struct Token {
-    pub source: String,
-}
+use crate::token::{Token, TokenType};
+use crate::src_loc::SrcLoc;
 
 pub struct Scanner {
     source: String,
@@ -22,7 +20,11 @@ impl Scanner {
     /// Scan the source, returning a list of tokens and/or errors
     pub fn scan(self) -> Vec<Result<Token, ScanError>> {
         self.source.split(char::is_whitespace)
-            .map(|s| Ok(Token { source: s.to_string()}))
+            .map(|s| Ok(Token::new(
+                        TokenType::String,
+                        s.to_string(),
+                        None,
+                        SrcLoc {offset: 0})))
             .collect()
     }
 }
