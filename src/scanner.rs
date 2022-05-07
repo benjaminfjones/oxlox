@@ -3,7 +3,7 @@
 /// Look ma, no regex!
 use std::char;
 
-use crate::token::{Token, TokenType, TokenLiteral};
+use crate::token::{Token, TokenType, TokenLiteral, lookup_keyword};
 use crate::src_loc::SrcLoc;
 
 pub struct Scanner {
@@ -178,8 +178,11 @@ impl Scanner {
         }
         let span: String = self.source[self.start..self.current]
             .iter().collect();
+
+        let typ = lookup_keyword(&span).unwrap_or(TokenType::Identifier);
+
         self.tokens.push(Ok(Token::new(
-            TokenType::Identifier,
+            typ,
             Some(span.clone()),
             Some(TokenLiteral::Identifier(span)),
             self.current_src_loc(),
@@ -276,6 +279,7 @@ impl Scanner {
 
     /// A very crude scanner state printer
     /// TODO: construct a current src location and render it along with source
+    #[allow(dead_code)]
     fn debug_state(&self) {
         for c in self.source.iter() {
             if *c == '\n' {
@@ -284,7 +288,7 @@ impl Scanner {
                 print!("{}", c);
             }
         }
-        print!("\n");
+        println!();
         for (i, c) in self.source.iter().enumerate() {
             if i == self.start || i == self.current {
                 print!("^");
@@ -295,7 +299,7 @@ impl Scanner {
                 print!(" ");
             }
         }
-        print!("\n");
+        println!();
     }
 }
 
@@ -335,7 +339,7 @@ mod test {
     fn test_scan_hello() {
         let r = scan_helper("test_scripts/hello.lox");
         let toks = scan_ok(r).expect("test scan failed");
-        assert!(contains_token_type(TokenType::Identifier, &toks));
+        assert!(contains_token_type(TokenType::Print, &toks));
         assert!(contains_token_type(TokenType::String, &toks));
         assert!(contains_token_type(TokenType::Eof, &toks));
 
@@ -372,6 +376,7 @@ mod test {
         let r = scan_helper("test_scripts/arithmetic.lox");
         let toks = scan_ok(r).expect("test scan failed");
         assert_eq!(toks.len(), 17);
+        assert!(contains_token_type(TokenType::Var, &toks));
         assert!(contains_token_type(TokenType::Identifier, &toks));
         assert!(contains_token_type(TokenType::Number, &toks));
         assert!(contains_token_type(TokenType::EqualEqual, &toks));

@@ -22,6 +22,29 @@ pub enum TokenType {
   Eof
 }
 
+/// Lookup Keywords
+/// TODO: keyword lookup: try using lazy_static + HashMap
+pub fn lookup_keyword(val: &str) -> Option<TokenType> {
+    match val {
+        "and" => Some(TokenType::And),
+        "class" => Some(TokenType::Class),
+        "else" => Some(TokenType::Else),
+        "false" => Some(TokenType::False),
+        "fun" => Some(TokenType::Fun),
+        "for" => Some(TokenType::For),
+        "if" => Some(TokenType::If),
+        "nil" => Some(TokenType::Nil),
+        "or" => Some(TokenType::Or),
+        "print" => Some(TokenType::Print),
+        "return" => Some(TokenType::Return),
+        "super" => Some(TokenType::Super),
+        "this" => Some(TokenType::This),
+        "var" => Some(TokenType::Var),
+        "while" => Some(TokenType::While),
+        _ => None,
+    }
+}
+
 #[derive(Debug)]
 pub enum TokenLiteral {
     Identifier(String),
