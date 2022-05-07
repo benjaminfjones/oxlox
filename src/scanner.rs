@@ -3,8 +3,8 @@
 /// Look ma, no regex!
 use std::char;
 
-use crate::token::{Token, TokenType, TokenLiteral, lookup_keyword};
 use crate::src_loc::SrcLoc;
+use crate::token::{lookup_keyword, Token, TokenLiteral, TokenType};
 
 pub struct Scanner {
     source: Vec<char>,
@@ -62,7 +62,9 @@ impl Scanner {
 
     /// Return the current source character and then advance the current source pointer
     fn advance(&mut self) -> Option<char> {
-        if self.at_end() { return None }
+        if self.at_end() {
+            return None;
+        }
         let c = self.source[self.current];
         self.current += 1;
         Some(c)
@@ -85,7 +87,8 @@ impl Scanner {
     ///
     /// Basic tokens only have a type, no lexeme or literal
     fn add_basic_token(&mut self, typ: TokenType) {
-        self.tokens.push(Ok(Token::new(typ, None, None, self.current_src_loc())));
+        self.tokens
+            .push(Ok(Token::new(typ, None, None, self.current_src_loc())));
     }
 
     /// Add a string literal token
@@ -103,14 +106,17 @@ impl Scanner {
         }
         if self.at_end() {
             // un-terminated string
-            self.tokens.push(Err(ScanError::new("unterminated string".to_string())));
+            self.tokens
+                .push(Err(ScanError::new("unterminated string".to_string())));
             return;
         }
 
         // consume the closing quote
         self.advance();
 
-        let lit: String = self.source[self.start+1..self.current-1].iter().collect();
+        let lit: String = self.source[self.start + 1..self.current - 1]
+            .iter()
+            .collect();
         let t = Token::new(
             TokenType::String,
             Some(lit.clone()),
@@ -135,11 +141,15 @@ impl Scanner {
                     // consume the '.'
                     self.advance();
                 } else {
-                    self.tokens.push(Err(ScanError::new("number missing fractional part".to_string())));
+                    self.tokens.push(Err(ScanError::new(
+                        "number missing fractional part".to_string(),
+                    )));
                     return;
                 }
             } else {
-                self.tokens.push(Err(ScanError::new("unterminated numeric literal".to_string())));
+                self.tokens.push(Err(ScanError::new(
+                    "unterminated numeric literal".to_string(),
+                )));
                 return;
             }
             while let Some(c) = self.peek() {
@@ -151,8 +161,7 @@ impl Scanner {
             }
         }
 
-        let span: String = self.source[self.start..self.current]
-            .iter().collect();
+        let span: String = self.source[self.start..self.current].iter().collect();
         // attempt to parse as f64
         let t: Result<Token, ScanError> = match span.parse::<f64>() {
             Ok(n) => Ok(Token::new(
@@ -176,8 +185,7 @@ impl Scanner {
             }
             self.advance();
         }
-        let span: String = self.source[self.start..self.current]
-            .iter().collect();
+        let span: String = self.source[self.start..self.current].iter().collect();
 
         let typ = lookup_keyword(&span).unwrap_or(TokenType::Identifier);
 
@@ -195,8 +203,7 @@ impl Scanner {
     fn add_unknown_token(&mut self, c: char) {
         let msg = format!(
             "unexpected char '{}' starting at offset {}",
-            c,
-            self.current
+            c, self.current
         );
         self.tokens.push(Err(ScanError::new(msg)));
     }
@@ -213,7 +220,7 @@ impl Scanner {
     /// Return the next character after the current source pointer, or None if that is beyond the end.
     fn peek_next(&self) -> Option<char> {
         if self.current + 1 < self.source.len() {
-            Some(self.source[self.current+1])
+            Some(self.source[self.current + 1])
         } else {
             None
         }
@@ -238,34 +245,52 @@ impl Scanner {
 
             // operators
             '!' => {
-                let t = if self.match_advance('=') { TokenType::BangEqual } else { TokenType::Bang };
+                let t = if self.match_advance('=') {
+                    TokenType::BangEqual
+                } else {
+                    TokenType::Bang
+                };
                 self.add_basic_token(t)
-            },
+            }
             '=' => {
-                let t = if self.match_advance('=') { TokenType::EqualEqual } else { TokenType::Equal };
+                let t = if self.match_advance('=') {
+                    TokenType::EqualEqual
+                } else {
+                    TokenType::Equal
+                };
                 self.add_basic_token(t)
-            },
+            }
             '<' => {
-                let t = if self.match_advance('=') { TokenType::LessEqual } else { TokenType::Less };
+                let t = if self.match_advance('=') {
+                    TokenType::LessEqual
+                } else {
+                    TokenType::Less
+                };
                 self.add_basic_token(t)
-            },
+            }
             '>' => {
-                let t = if self.match_advance('=') { TokenType::GreaterEqual } else { TokenType::Greater };
+                let t = if self.match_advance('=') {
+                    TokenType::GreaterEqual
+                } else {
+                    TokenType::Greater
+                };
                 self.add_basic_token(t)
-            },
+            }
 
             // division or comment
             '/' => {
                 if self.match_advance('/') {
                     // comsume comment until EOL
                     while let Some(c) = self.peek() {
-                        if c == '\n' { break; }
+                        if c == '\n' {
+                            break;
+                        }
                         self.advance();
                     }
                 } else {
                     self.add_basic_token(TokenType::Slash)
                 }
-            },
+            }
 
             // Literals
             '"' => self.add_string_token(),
@@ -305,15 +330,16 @@ impl Scanner {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use std::fs;
     use std::io::Read;
-    use super::*;
 
     /// Return true if no scan errors were encountered and last token returned is EOF
     fn scan_helper(path: &str) -> Vec<Result<Token, ScanError>> {
         let mut file = fs::File::open(path).expect("failed to open test file");
         let mut content = String::new();
-        file.read_to_string(&mut content).expect("failed to read test file");
+        file.read_to_string(&mut content)
+            .expect("failed to read test file");
         let mut scanner = Scanner::new(content);
         scanner.scan()
     }
@@ -342,6 +368,7 @@ mod test {
         assert!(contains_token_type(TokenType::Print, &toks));
         assert!(contains_token_type(TokenType::String, &toks));
         assert!(contains_token_type(TokenType::Eof, &toks));
+        assert!(ends_with_eof(&toks));
 
         let hello_str = find_first(TokenType::String, &toks);
         assert!(hello_str.is_some());
@@ -355,6 +382,7 @@ mod test {
         let toks = scan_ok(r).expect("test scan failed");
         assert_eq!(toks.len(), 1);
         assert!(contains_token_type(TokenType::Eof, &toks));
+        assert!(ends_with_eof(&toks));
     }
 
     #[test]
@@ -369,6 +397,7 @@ mod test {
         assert!(contains_token_type(TokenType::Plus, &toks));
         assert!(contains_token_type(TokenType::Equal, &toks));
         assert!(contains_token_type(TokenType::Eof, &toks));
+        assert!(ends_with_eof(&toks));
     }
 
     #[test]
@@ -381,6 +410,7 @@ mod test {
         assert!(contains_token_type(TokenType::Number, &toks));
         assert!(contains_token_type(TokenType::EqualEqual, &toks));
         assert!(contains_token_type(TokenType::Eof, &toks));
+        assert!(ends_with_eof(&toks));
     }
 
     #[test]
@@ -388,16 +418,25 @@ mod test {
         let input = "var pi = 3.;".to_string();
         let mut scanner = Scanner::new(input);
         let res = scan_ok(scanner.scan());
-        assert_eq!(res.unwrap_err(), ScanError::new("number missing fractional part".to_string()));
+        assert_eq!(
+            res.unwrap_err(),
+            ScanError::new("number missing fractional part".to_string())
+        );
 
         let input = "var pi = 3.z;".to_string();
         let mut scanner = Scanner::new(input);
         let res = scan_ok(scanner.scan());
-        assert_eq!(res.unwrap_err(), ScanError::new("number missing fractional part".to_string()));
+        assert_eq!(
+            res.unwrap_err(),
+            ScanError::new("number missing fractional part".to_string())
+        );
 
         let input = "var pi = 3.".to_string();
         let mut scanner = Scanner::new(input);
         let res = scan_ok(scanner.scan());
-        assert_eq!(res.unwrap_err(), ScanError::new("unterminated numeric literal".to_string()));
+        assert_eq!(
+            res.unwrap_err(),
+            ScanError::new("unterminated numeric literal".to_string())
+        );
     }
 }

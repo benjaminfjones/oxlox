@@ -1,8 +1,7 @@
-use std::{env, fs, process};
 use std::io::{self, Read, Write};
+use std::{env, fs, process};
 
 use oxlox::scanner::Scanner;
-
 
 /// Run a script or start the REPL
 ///
@@ -49,7 +48,7 @@ fn run_repl() -> io::Result<()> {
                 println!("[debug] read {} bytes", n);
                 run(input.trim())?;
                 input.clear();
-            },
+            }
             Err(e) => {
                 return Err(e);
             }
