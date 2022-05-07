@@ -1,6 +1,9 @@
+/// A lexical scanner for the language.
+///
+/// Look ma, no regex!
 use std::char;
 
-use crate::token::{Token, TokenType};
+use crate::token::{Token, TokenType, TokenLiteral};
 use crate::src_loc::SrcLoc;
 
 pub struct Scanner {
@@ -8,10 +11,9 @@ pub struct Scanner {
     tokens: Vec<Result<Token, ScanError>>,
     start: usize,
     current: usize,
-    line: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ScanError(String);
 
 impl ScanError {
@@ -27,7 +29,6 @@ impl Scanner {
             tokens: Vec::new(),
             start: 0,
             current: 0,
-            line: 1,
         }
     }
 
@@ -44,8 +45,15 @@ impl Scanner {
         let ret_tokens = std::mem::take(&mut self.tokens);
         self.start = 0;
         self.current = 0;
-        self.line = 1;
         ret_tokens
+    }
+
+    /// Return the corrent source location based on the scanner state
+    fn current_src_loc(&self) -> SrcLoc {
+        SrcLoc {
+            offset: self.start,
+            length: self.current - self.start,
+        }
     }
 
     fn at_end(&self) -> bool {
@@ -53,10 +61,11 @@ impl Scanner {
     }
 
     /// Return the current source character and then advance the current source pointer
-    fn advance(&mut self) -> char {
+    fn advance(&mut self) -> Option<char> {
+        if self.at_end() { return None }
         let c = self.source[self.current];
         self.current += 1;
-        c
+        Some(c)
     }
 
     /// A conditional `advance`.
@@ -76,7 +85,105 @@ impl Scanner {
     ///
     /// Basic tokens only have a type, no lexeme or literal
     fn add_basic_token(&mut self, typ: TokenType) {
-        self.tokens.push(Ok(Token::new(typ, None, None, SrcLoc { offset: self.current, length: 1 })));
+        self.tokens.push(Ok(Token::new(typ, None, None, self.current_src_loc())));
+    }
+
+    /// Add a string literal token
+    ///
+    /// String literals start and with wtih a quote " and do not contains embedded
+    /// quotes.
+    /// TODO: support embedded quotes
+    /// TODO: support escaped characters
+    fn add_string_token(&mut self) {
+        while let Some(c) = self.peek() {
+            if c == '"' {
+                break;
+            }
+            self.advance();
+        }
+        if self.at_end() {
+            // un-terminated string
+            self.tokens.push(Err(ScanError::new("unterminated string".to_string())));
+            return;
+        }
+
+        // consume the closing quote
+        self.advance();
+
+        let lit: String = self.source[self.start+1..self.current-1].iter().collect();
+        let t = Token::new(
+            TokenType::String,
+            Some(lit.clone()),
+            Some(TokenLiteral::String(lit)),
+            self.current_src_loc(),
+        );
+        self.tokens.push(Ok(t));
+    }
+
+    fn add_number_token(&mut self) {
+        while let Some(c) = self.peek() {
+            if !c.is_digit(10) {
+                // end of the integral number part of the lexeme
+                break;
+            }
+            self.advance();
+        }
+
+        if self.peek() == Some('.') {
+            if let Some(nc) = self.peek_next() {
+                if nc.is_digit(10) {
+                    // consume the '.'
+                    self.advance();
+                } else {
+                    self.tokens.push(Err(ScanError::new("number missing fractional part".to_string())));
+                    return;
+                }
+            } else {
+                self.tokens.push(Err(ScanError::new("unterminated numeric literal".to_string())));
+                return;
+            }
+            while let Some(c) = self.peek() {
+                if !c.is_digit(10) {
+                    // end of the fractional number part of the lexeme
+                    break;
+                }
+                self.advance();
+            }
+        }
+
+        let span: String = self.source[self.start..self.current]
+            .iter().collect();
+        // attempt to parse as f64
+        let t: Result<Token, ScanError> = match span.parse::<f64>() {
+            Ok(n) => Ok(Token::new(
+                TokenType::Number,
+                Some(span),
+                Some(TokenLiteral::Nunmber(n)),
+                self.current_src_loc(),
+            )),
+            Err(_) => {
+                let msg = format!("failed to parse number from: {}", span);
+                Err(ScanError::new(msg))
+            }
+        };
+        self.tokens.push(t);
+    }
+
+    fn add_identifier_token(&mut self) {
+        while let Some(c) = self.peek() {
+            if !(c.is_ascii_alphabetic() || c.is_ascii_digit() || c == '_') {
+                break;
+            }
+            self.advance();
+        }
+        let span: String = self.source[self.start..self.current]
+            .iter().collect();
+        self.tokens.push(Ok(Token::new(
+            TokenType::Identifier,
+            Some(span.clone()),
+            Some(TokenLiteral::Identifier(span)),
+            self.current_src_loc(),
+        )));
     }
 
     /// Add an unknown token
@@ -91,20 +198,28 @@ impl Scanner {
         self.tokens.push(Err(ScanError::new(msg)));
     }
 
-    /// Return the next character after the current source pointer, or None if we're at the end.
+    /// Return the character at the current source pointer, or None if we're at the end.
     fn peek(&self) -> Option<char> {
-        if self.current + 1 < self.source.len() {
+        if self.current < self.source.len() {
             Some(self.source[self.current])
         } else {
             None
         }
     }
 
+    /// Return the next character after the current source pointer, or None if that is beyond the end.
+    fn peek_next(&self) -> Option<char> {
+        if self.current + 1 < self.source.len() {
+            Some(self.source[self.current+1])
+        } else {
+            None
+        }
+    }
+
     fn scan_token(&mut self) {
-        match self.advance() {
+        match self.advance().expect("invalid scanner state") {
             // skip whitespace
-            ' ' | '\r' | '\t' => (),
-            '\n' => { self.line += 1 }
+            ' ' | '\r' | '\t' | '\n' => (),
 
             // single character tokens
             '(' => self.add_basic_token(TokenType::LeftParen),
@@ -149,9 +264,38 @@ impl Scanner {
                 }
             },
 
+            // Literals
+            '"' => self.add_string_token(),
+            c if c.is_digit(10) => self.add_number_token(),
+            c if c.is_ascii_alphabetic() => self.add_identifier_token(),
+
             // default
             c => self.add_unknown_token(c),
         }
+    }
+
+    /// A very crude scanner state printer
+    /// TODO: construct a current src location and render it along with source
+    fn debug_state(&self) {
+        for c in self.source.iter() {
+            if *c == '\n' {
+                print!("\\n");
+            } else {
+                print!("{}", c);
+            }
+        }
+        print!("\n");
+        for (i, c) in self.source.iter().enumerate() {
+            if i == self.start || i == self.current {
+                print!("^");
+            } else {
+                print!(" ");
+            }
+            if *c == '\n' {
+                print!(" ");
+            }
+        }
+        print!("\n");
     }
 }
 
@@ -162,37 +306,93 @@ mod test {
     use super::*;
 
     /// Return true if no scan errors were encountered and last token returned is EOF
-    fn scan_ok(path: &str) -> bool {
+    fn scan_helper(path: &str) -> Vec<Result<Token, ScanError>> {
         let mut file = fs::File::open(path).expect("failed to open test file");
         let mut content = String::new();
         file.read_to_string(&mut content).expect("failed to read test file");
         let mut scanner = Scanner::new(content);
-        let tokens = scanner.scan();
-        tokens.iter().all(|t| t.is_ok()) && tokens.last().unwrap().as_ref().unwrap().is_eof()
+        scanner.scan()
     }
 
-    /// Return true if at least one scan error was encountered
-    fn scan_err(path: &str) -> bool {
-        let mut file = fs::File::open(path).expect("failed to open test file");
-        let mut content = String::new();
-        file.read_to_string(&mut content).expect("failed to read test file");
-        let mut scanner = Scanner::new(content);
-        scanner.scan().iter().any(|t| t.is_err())
+    /// Returns vector of Ok tokens, or the first ScanError encountered
+    fn scan_ok(tokens: Vec<Result<Token, ScanError>>) -> Result<Vec<Token>, ScanError> {
+        tokens.into_iter().collect()
+    }
+
+    fn contains_token_type(typ: TokenType, tokens: &[Token]) -> bool {
+        tokens.iter().any(|t| t.typ == typ)
+    }
+
+    fn find_first(typ: TokenType, tokens: &[Token]) -> Option<&Token> {
+        tokens.iter().find(|t| t.typ == typ)
+    }
+
+    fn ends_with_eof(tokens: &[Token]) -> bool {
+        return tokens.last().as_ref().unwrap().is_eof();
     }
 
     #[test]
     fn test_scan_hello() {
-        // TODO: make scan_ok
-        assert!(scan_err("test_scripts/hello.lox"));
+        let r = scan_helper("test_scripts/hello.lox");
+        let toks = scan_ok(r).expect("test scan failed");
+        assert!(contains_token_type(TokenType::Identifier, &toks));
+        assert!(contains_token_type(TokenType::String, &toks));
+        assert!(contains_token_type(TokenType::Eof, &toks));
+
+        let hello_str = find_first(TokenType::String, &toks);
+        assert!(hello_str.is_some());
+        let hello_str = hello_str.unwrap();
+        assert_eq!(hello_str.lexeme, Some("Hello, world!".to_string()));
     }
 
     #[test]
     fn test_scan_comment() {
-        assert!(scan_ok("test_scripts/comment.lox"));
+        let r = scan_helper("test_scripts/comment.lox");
+        let toks = scan_ok(r).expect("test scan failed");
+        assert_eq!(toks.len(), 1);
+        assert!(contains_token_type(TokenType::Eof, &toks));
     }
 
     #[test]
     fn test_scan_operators() {
-        assert!(scan_ok("test_scripts/operators.lox"));
+        let r = scan_helper("test_scripts/operators.lox");
+        let toks = scan_ok(r).expect("test scan failed");
+        assert_eq!(toks.len(), 17);
+        assert!(contains_token_type(TokenType::LeftParen, &toks));
+        assert!(contains_token_type(TokenType::RightParen, &toks));
+        assert!(contains_token_type(TokenType::LeftBrace, &toks));
+        assert!(contains_token_type(TokenType::RightBrace, &toks));
+        assert!(contains_token_type(TokenType::Plus, &toks));
+        assert!(contains_token_type(TokenType::Equal, &toks));
+        assert!(contains_token_type(TokenType::Eof, &toks));
+    }
+
+    #[test]
+    fn test_scan_arithmetic() {
+        let r = scan_helper("test_scripts/arithmetic.lox");
+        let toks = scan_ok(r).expect("test scan failed");
+        assert_eq!(toks.len(), 17);
+        assert!(contains_token_type(TokenType::Identifier, &toks));
+        assert!(contains_token_type(TokenType::Number, &toks));
+        assert!(contains_token_type(TokenType::EqualEqual, &toks));
+        assert!(contains_token_type(TokenType::Eof, &toks));
+    }
+
+    #[test]
+    fn test_scan_bad_numbers() {
+        let input = "var pi = 3.;".to_string();
+        let mut scanner = Scanner::new(input);
+        let res = scan_ok(scanner.scan());
+        assert_eq!(res.unwrap_err(), ScanError::new("number missing fractional part".to_string()));
+
+        let input = "var pi = 3.z;".to_string();
+        let mut scanner = Scanner::new(input);
+        let res = scan_ok(scanner.scan());
+        assert_eq!(res.unwrap_err(), ScanError::new("number missing fractional part".to_string()));
+
+        let input = "var pi = 3.".to_string();
+        let mut scanner = Scanner::new(input);
+        let res = scan_ok(scanner.scan());
+        assert_eq!(res.unwrap_err(), ScanError::new("unterminated numeric literal".to_string()));
     }
 }
