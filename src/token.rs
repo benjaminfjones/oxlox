@@ -1,6 +1,7 @@
+use std::fmt;
 use crate::src_loc::SrcLoc;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenType {
     // Single-character tokens
     LeftParen,
@@ -74,7 +75,7 @@ pub fn lookup_keyword(val: &str) -> Option<TokenType> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum TokenLiteral {
     Identifier(String),
     String(String),
@@ -84,7 +85,7 @@ pub enum TokenLiteral {
 /// Tokens
 ///
 /// TODO: represent source using string slices into scanner source
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Token {
     /// Type of the token
     pub typ: TokenType,
@@ -123,5 +124,15 @@ impl Token {
 
     pub fn is_eof(&self) -> bool {
         self.typ == TokenType::Eof
+    }
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(lexeme) = self.lexeme.as_ref() {
+            write!(f, "{}", lexeme)
+        } else {
+            write!(f, "{:?}", self.typ)
+        }
     }
 }

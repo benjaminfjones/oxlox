@@ -1,38 +1,6 @@
 use std::fmt;
 
-#[derive(Clone)]
-pub enum BinaryOperator {
-    Plus,
-    Minus,
-    Multiply,
-    Divide,
-}
-
-impl fmt::Display for BinaryOperator {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            BinaryOperator::Plus => write!(f, "+"),
-            BinaryOperator::Minus => write!(f, "-"),
-            BinaryOperator::Multiply => write!(f, "*"),
-            BinaryOperator::Divide => write!(f, "/"),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub enum UnaryOperator {
-    Bang,
-    Minus,
-}
-
-impl fmt::Display for UnaryOperator {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            UnaryOperator::Bang => write!(f, "!"),
-            UnaryOperator::Minus => write!(f, "-"),
-        }
-    }
-}
+use crate::token::Token;
 
 /// Top level expression type
 #[derive(Clone)]
@@ -43,11 +11,13 @@ pub enum Expr {
     Unary(UnaryExpr),
 }
 
-/// The application of a binary operation to two expressions
+/// The application of a binary operation to two expressions.
+///
+/// This type owns pointers to other expressions and a copy of the operator token.
 #[derive(Clone)]
 pub struct BinaryExpr {
     pub left: Box<Expr>,
-    pub operator: BinaryOperator,
+    pub operator: Token,
     pub right: Box<Expr>,
 }
 
@@ -76,7 +46,7 @@ impl fmt::Display for LiteralExpr {
 /// The application of a unary operator to an expression
 #[derive(Clone)]
 pub struct UnaryExpr {
-    pub operator: UnaryOperator,
+    pub operator: Token,
     pub right: Box<Expr>,
 }
 
@@ -93,6 +63,7 @@ impl fmt::Display for Expr {
 
 #[cfg(test)]
 mod test {
+    use crate::{token::TokenType, src_loc::SrcLoc};
     use super::*;
 
     #[test]
@@ -101,12 +72,12 @@ mod test {
         let m = Expr::Literal(LiteralExpr::Number(0.123));
         let p = Expr::Binary(BinaryExpr {
             left: Box::new(n.clone()),
-            operator: BinaryOperator::Multiply,
+            operator: Token::new(TokenType::Star, Some("*".to_string()), None, SrcLoc::dummy()),
             right: Box::new(m.clone()),
         });
         let q = Expr::Binary(BinaryExpr {
             left: Box::new(n.clone()),
-            operator: BinaryOperator::Plus,
+            operator: Token::new(TokenType::Plus, Some("+".to_string()), None, SrcLoc::dummy()),
             right: Box::new(p.clone()),
         });
         println!("n: {}", n);
