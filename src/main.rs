@@ -1,6 +1,7 @@
 use std::io::{self, Read, Write};
 use std::{env, fs, process};
 
+use oxlox::parser::Parser;
 use oxlox::scanner::Scanner;
 
 /// Run a script or start the REPL
@@ -70,9 +71,11 @@ fn run(script: &str) -> io::Result<()> {
     let tokens = scanner.scan();
     println!("[debug] eval");
     if let Ok(ts) = tokens {
-        println!("Scan successful! Tokens:");
-        for t in ts {
-            println!("{:?}", t);
+        println!("Scan successful!");
+        println!("Parse tree:");
+        match Parser::new(ts).parse_expression() {
+            Ok(expr) => println!("{}", expr),
+            Err(e) => println!("Parse failed: {:?}", e),
         }
     } else {
         println!("Scan failed. Errors:");
