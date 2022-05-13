@@ -46,13 +46,18 @@ impl Scanner {
         let ret_tokens: Vec<Result<Token, ScanError>> = std::mem::take(&mut self.tokens);
         self.start = 0;
         self.current = 0;
-        let (tokens, errs): (Vec<_>, Vec<_>) = ret_tokens
+        let mut tokens: Vec<Token> = Vec::new();
+        let mut errs: Vec<ScanError> = Vec::new();
+        ret_tokens
             .into_iter()
-            .partition(Result::is_ok);
+            .for_each(|val| match val {
+                Ok(t) => tokens.push(t),
+                Err(e) => errs.push(e),
+            });
         if errs.is_empty() {
-            Ok(tokens.into_iter().map(|t| t.unwrap()).collect())
+            Ok(tokens)
         } else {
-            Err(errs.into_iter().map(|e| e.unwrap_err()).collect())
+            Err(errs)
         }
     }
 
