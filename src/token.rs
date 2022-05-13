@@ -79,7 +79,7 @@ pub fn lookup_keyword(val: &str) -> Option<TokenType> {
 pub enum TokenLiteral {
     Identifier(String),
     String(String),
-    Nunmber(f64),
+    Number(f64),
 }
 
 /// Tokens

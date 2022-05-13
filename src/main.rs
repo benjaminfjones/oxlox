@@ -69,8 +69,17 @@ fn run(script: &str) -> io::Result<()> {
     let mut scanner = Scanner::new(script.to_string());
     let tokens = scanner.scan();
     println!("[debug] eval");
-    for tok in tokens {
-        println!("{:?}", tok);
+    if let Ok(ts) = tokens {
+        println!("Scan successful! Tokens:");
+        for t in ts {
+            println!("{:?}", t);
+        }
+    } else {
+        println!("Scan failed. Errors:");
+        let errs = tokens.unwrap_err();
+        for e in errs {
+            println!("{:?}", e);
+        }
     }
     Ok(())
 }

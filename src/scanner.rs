@@ -32,20 +32,28 @@ impl Scanner {
         }
     }
 
-    /// Scan the source, returning a list of tokens and/or errors.
+    /// Scan the source, returning a list of tokens if the scan succeeds, or a list of errors if it
+    /// fails.
     ///
     /// Resets the scanner state before returning.
-    pub fn scan(&mut self) -> Vec<Result<Token, ScanError>> {
+    pub fn scan(&mut self) -> Result<Vec<Token>, Vec<ScanError>> {
         while !self.at_end() {
             self.start = self.current;
             self.scan_token();
         }
 
         self.tokens.push(Ok(Token::eof(self.current)));
-        let ret_tokens = std::mem::take(&mut self.tokens);
+        let ret_tokens: Vec<Result<Token, ScanError>> = std::mem::take(&mut self.tokens);
         self.start = 0;
         self.current = 0;
-        ret_tokens
+        let (tokens, errs): (Vec<_>, Vec<_>) = ret_tokens
+            .into_iter()
+            .partition(Result::is_ok);
+        if errs.is_empty() {
+            Ok(tokens.into_iter().map(|t| t.unwrap()).collect())
+        } else {
+            Err(errs.into_iter().map(|e| e.unwrap_err()).collect())
+        }
     }
 
     /// Return the corrent source location based on the scanner state
@@ -167,7 +175,7 @@ impl Scanner {
             Ok(n) => Ok(Token::new(
                 TokenType::Number,
                 Some(span),
-                Some(TokenLiteral::Nunmber(n)),
+                Some(TokenLiteral::Number(n)),
                 self.current_src_loc(),
             )),
             Err(_) => {
@@ -335,18 +343,13 @@ mod test {
     use std::io::Read;
 
     /// Return true if no scan errors were encountered and last token returned is EOF
-    fn scan_helper(path: &str) -> Vec<Result<Token, ScanError>> {
+    fn scan_helper(path: &str) -> Result<Vec<Token>, Vec<ScanError>> {
         let mut file = fs::File::open(path).expect("failed to open test file");
         let mut content = String::new();
         file.read_to_string(&mut content)
             .expect("failed to read test file");
         let mut scanner = Scanner::new(content);
         scanner.scan()
-    }
-
-    /// Returns vector of Ok tokens, or the first ScanError encountered
-    fn scan_ok(tokens: Vec<Result<Token, ScanError>>) -> Result<Vec<Token>, ScanError> {
-        tokens.into_iter().collect()
     }
 
     fn contains_token_type(typ: TokenType, tokens: &[Token]) -> bool {
@@ -363,8 +366,7 @@ mod test {
 
     #[test]
     fn test_scan_hello() {
-        let r = scan_helper("test_scripts/hello.lox");
-        let toks = scan_ok(r).expect("test scan failed");
+        let toks = scan_helper("test_scripts/hello.lox").expect("test scan failed");
         assert!(contains_token_type(TokenType::Print, &toks));
         assert!(contains_token_type(TokenType::String, &toks));
         assert!(contains_token_type(TokenType::Eof, &toks));
@@ -378,8 +380,7 @@ mod test {
 
     #[test]
     fn test_scan_comment() {
-        let r = scan_helper("test_scripts/comment.lox");
-        let toks = scan_ok(r).expect("test scan failed");
+        let toks = scan_helper("test_scripts/comment.lox").expect("test scan failed");
         assert_eq!(toks.len(), 1);
         assert!(contains_token_type(TokenType::Eof, &toks));
         assert!(ends_with_eof(&toks));
@@ -387,8 +388,7 @@ mod test {
 
     #[test]
     fn test_scan_operators() {
-        let r = scan_helper("test_scripts/operators.lox");
-        let toks = scan_ok(r).expect("test scan failed");
+        let toks = scan_helper("test_scripts/operators.lox").expect("test scan failed");
         assert_eq!(toks.len(), 17);
         assert!(contains_token_type(TokenType::LeftParen, &toks));
         assert!(contains_token_type(TokenType::RightParen, &toks));
@@ -402,8 +402,7 @@ mod test {
 
     #[test]
     fn test_scan_arithmetic() {
-        let r = scan_helper("test_scripts/arithmetic.lox");
-        let toks = scan_ok(r).expect("test scan failed");
+        let toks = scan_helper("test_scripts/arithmetic.lox").expect("test scan failed");
         assert_eq!(toks.len(), 17);
         assert!(contains_token_type(TokenType::Var, &toks));
         assert!(contains_token_type(TokenType::Identifier, &toks));
@@ -416,27 +415,24 @@ mod test {
     #[test]
     fn test_scan_bad_numbers() {
         let input = "var pi = 3.;".to_string();
-        let mut scanner = Scanner::new(input);
-        let res = scan_ok(scanner.scan());
+        let res = Scanner::new(input).scan();
         assert_eq!(
             res.unwrap_err(),
-            ScanError::new("number missing fractional part".to_string())
+            vec![ScanError::new("number missing fractional part".to_string())]
         );
 
         let input = "var pi = 3.z;".to_string();
-        let mut scanner = Scanner::new(input);
-        let res = scan_ok(scanner.scan());
+        let res = Scanner::new(input).scan();
         assert_eq!(
             res.unwrap_err(),
-            ScanError::new("number missing fractional part".to_string())
+            vec![ScanError::new("number missing fractional part".to_string())]
         );
 
         let input = "var pi = 3.".to_string();
-        let mut scanner = Scanner::new(input);
-        let res = scan_ok(scanner.scan());
+        let res = Scanner::new(input).scan();
         assert_eq!(
             res.unwrap_err(),
-            ScanError::new("unterminated numeric literal".to_string())
+            vec![ScanError::new("unterminated numeric literal".to_string())]
         );
     }
 }
