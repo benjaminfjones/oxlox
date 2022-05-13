@@ -69,6 +69,7 @@ pub fn lookup_keyword(val: &str) -> Option<TokenType> {
         "return" => Some(TokenType::Return),
         "super" => Some(TokenType::Super),
         "this" => Some(TokenType::This),
+        "true" => Some(TokenType::True),
         "var" => Some(TokenType::Var),
         "while" => Some(TokenType::While),
         _ => None,

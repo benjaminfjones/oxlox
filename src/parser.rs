@@ -272,4 +272,20 @@ mod test {
         let ParseError(err_msg) = Parser::new(tokens).parse_expression().unwrap_err();
         assert!(err_msg.contains("expected RightParen"));
     }
+
+    #[test]
+    fn test_parse_expression_unary() {
+        let tokens = Scanner::new("-1 >= -2".to_string()).scan().expect("scan failed");
+        assert!(Parser::new(tokens).parse_expression().is_ok());
+
+        let tokens = Scanner::new("-(-1) >= 0".to_string()).scan().expect("scan failed");
+        assert!(Parser::new(tokens).parse_expression().is_ok());
+
+        let tokens = Scanner::new("1 - -1".to_string()).scan().expect("scan failed");
+        assert!(Parser::new(tokens).parse_expression().is_ok());
+
+        let tokens = Scanner::new("!true == false".to_string()).scan().expect("scan failed");
+        println!("{:?}", tokens);
+        assert!(Parser::new(tokens).parse_expression().is_ok());
+    }
 }
