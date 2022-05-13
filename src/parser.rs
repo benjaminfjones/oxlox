@@ -101,53 +101,33 @@ impl Parser {
         self.parse_equality()
     }
 
-    pub fn parse_equality(&mut self) -> Result<Expr, ParseError> {
-        let mut expr: Expr = self.parse_comparison()?;
+    fn parse_binary_association(&mut self, operators: &[TokenType], operand_parser: fn(&mut Self) -> Result<Expr, ParseError>) -> Result<Expr, ParseError> {
+        let mut expr: Expr = operand_parser(self)?;
 
-        while self.match_any_token(&EQUALITY_OPERATORS) {
+        while self.match_any_token(operators) {
             let operator = self.previous_cloned();
-            let right = self.parse_comparison()?;
+            let right = operand_parser(self)?;
             expr = Expr::Binary(BinaryExpr { left: Box::new(expr), operator, right: Box::new(right) });
         }
 
         Ok(expr)
+    }
+
+    pub fn parse_equality(&mut self) -> Result<Expr, ParseError> {
+        self.parse_binary_association(&EQUALITY_OPERATORS, Parser::parse_comparison)
     }
 
 
     pub fn parse_comparison(&mut self) -> Result<Expr, ParseError> {
-        let mut expr: Expr = self.parse_term()?;
-
-        while self.match_any_token(&COMPARISON_OPERATORS) {
-            let operator = self.previous_cloned();
-            let right = self.parse_term()?;
-            expr = Expr::Binary(BinaryExpr { left: Box::new(expr), operator, right: Box::new(right) });
-        }
-
-        Ok(expr)
+        self.parse_binary_association(&COMPARISON_OPERATORS, Parser::parse_term)
     }
 
     pub fn parse_term(&mut self) -> Result<Expr, ParseError> {
-        let mut expr: Expr = self.parse_factor()?;
-
-        while self.match_any_token(&TERM_OPERATORS) {
-            let operator = self.previous_cloned();
-            let right = self.parse_factor()?;
-            expr = Expr::Binary(BinaryExpr { left: Box::new(expr), operator, right: Box::new(right) });
-        }
-
-        Ok(expr)
+        self.parse_binary_association(&TERM_OPERATORS, Parser::parse_factor)
     }
 
     pub fn parse_factor(&mut self) -> Result<Expr, ParseError> {
-        let mut expr: Expr = self.parse_unary()?;
-
-        while self.match_any_token(&FACTOR_OPERATORS) {
-            let operator = self.previous_cloned();
-            let right = self.parse_unary()?;
-            expr = Expr::Binary(BinaryExpr { left: Box::new(expr), operator, right: Box::new(right) });
-        }
-
-        Ok(expr)
+        self.parse_binary_association(&FACTOR_OPERATORS, Parser::parse_unary)
     }
 
     pub fn parse_unary(&mut self) -> Result<Expr, ParseError> {
