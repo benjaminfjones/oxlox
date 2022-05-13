@@ -3,7 +3,7 @@ use std::fmt;
 use crate::token::Token;
 
 /// Top level expression type
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Expr {
     Binary(BinaryExpr),
     Grouping(GroupingExpr),
@@ -14,7 +14,7 @@ pub enum Expr {
 /// The application of a binary operation to two expressions.
 ///
 /// This type owns pointers to other expressions and a copy of the operator token.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BinaryExpr {
     pub left: Box<Expr>,
     pub operator: Token,
@@ -22,14 +22,16 @@ pub struct BinaryExpr {
 }
 
 /// A parenthesized expression
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct GroupingExpr {
     pub expr: Box<Expr>,
 }
 
 /// A literal expression
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum LiteralExpr {
+    Bool(bool),
+    Nil,
     Number(f64),
     String(String),
 }
@@ -37,6 +39,8 @@ pub enum LiteralExpr {
 impl fmt::Display for LiteralExpr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            LiteralExpr::Bool(b) => write!(f, "{}", b),
+            LiteralExpr::Nil => write!(f, "nil"),
             LiteralExpr::Number(x) => write!(f, "{}", x),
             LiteralExpr::String(s) => write!(f, "\"{}\"", s),
         }
@@ -44,7 +48,7 @@ impl fmt::Display for LiteralExpr {
 }
 
 /// The application of a unary operator to an expression
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct UnaryExpr {
     pub operator: Token,
     pub right: Box<Expr>,
