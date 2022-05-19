@@ -222,11 +222,17 @@ mod test {
             _ => panic!("expected runtime bool value"),
         }
     }
+    #[test]
+    fn test_expr_primitives() {
+        assert_eq!(assert_runtime_number(interpret_to_runtime_value("1")), 1);
+        assert!(assert_runtime_bool(interpret_to_runtime_value("true")));
+    }
 
     #[test]
     fn test_arithmetic() {
         assert_eq!(assert_runtime_number(interpret_to_runtime_value("1 + 1")), 2);
         assert_eq!(assert_runtime_number(interpret_to_runtime_value("(1 + 1)")), 2);
+        assert_eq!(assert_runtime_number(interpret_to_runtime_value("-(1 + 1)")), -2);
         assert_eq!(assert_runtime_number(interpret_to_runtime_value("0 + 1 + 3")), 4);
         assert_eq!(assert_runtime_number(interpret_to_runtime_value("(0 + 1) + 3")), 4);
         assert_eq!(assert_runtime_number(interpret_to_runtime_value("(0 - 1) + 3")), 2);
@@ -252,6 +258,7 @@ mod test {
         assert!(assert_runtime_bool(interpret_to_runtime_value("\"1\" == \"1\"")));
         assert!(!assert_runtime_bool(interpret_to_runtime_value("\"foo\" == \"bar\"")));
         assert!(!assert_runtime_bool(interpret_to_runtime_value("true == false")));
+        assert!(assert_runtime_bool(interpret_to_runtime_value("!(true == false)")));
         assert!(!assert_runtime_bool(interpret_to_runtime_value("nil != nil")));
     }
 
@@ -269,4 +276,12 @@ mod test {
         assert!(assert_runtime_bool(interpret_to_runtime_value("1 + 2 > 2")));
         assert!(!assert_runtime_bool(interpret_to_runtime_value("1 + 1 > 3")));
     }
+
+    #[test]
+    fn test_comparison_type_error() {
+        let err = interpret_to_runtime_value("1 >= \"one\"").unwrap_err();
+        let expected_msg = "Runtime Error: SrcLoc { offset: 2, length: 2 }:GreaterEqual: comparison type error: invalid operand types";
+        assert_eq!(err.0, expected_msg.to_string());
+    }
+
 }
