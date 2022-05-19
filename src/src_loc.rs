@@ -10,6 +10,9 @@ pub struct SrcLoc {
 impl SrcLoc {
     /// Construct a dummy source location; used only in testing
     pub fn dummy() -> Self {
-        SrcLoc { offset: 0, length: 0 }
+        SrcLoc {
+            offset: 0,
+            length: 0,
+        }
     }
 }

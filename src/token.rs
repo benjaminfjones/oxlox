@@ -1,5 +1,5 @@
+use crate::{ptypes::PInt, src_loc::SrcLoc};
 use std::fmt;
-use crate::{src_loc::SrcLoc, ptypes::PInt};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenType {

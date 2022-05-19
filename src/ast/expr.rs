@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{token::Token, ptypes::PInt};
+use crate::{ptypes::PInt, token::Token};
 
 /// Top level expression type
 #[derive(Clone, Debug)]
@@ -83,8 +83,8 @@ impl fmt::Display for Expr {
 
 #[cfg(test)]
 mod test {
-    use crate::{token::TokenType, src_loc::SrcLoc};
     use super::*;
+    use crate::{src_loc::SrcLoc, token::TokenType};
 
     #[test]
     fn test_print_expr() {
@@ -92,12 +92,22 @@ mod test {
         let m = Expr::Literal(LiteralExpr::Number(4));
         let p = Expr::Binary(BinaryExpr {
             left: Box::new(n.clone()),
-            operator: Token::new(TokenType::Star, Some("*".to_string()), None, SrcLoc::dummy()),
+            operator: Token::new(
+                TokenType::Star,
+                Some("*".to_string()),
+                None,
+                SrcLoc::dummy(),
+            ),
             right: Box::new(m.clone()),
         });
         let q = Expr::Binary(BinaryExpr {
             left: Box::new(n.clone()),
-            operator: Token::new(TokenType::Plus, Some("+".to_string()), None, SrcLoc::dummy()),
+            operator: Token::new(
+                TokenType::Plus,
+                Some("+".to_string()),
+                None,
+                SrcLoc::dummy(),
+            ),
             right: Box::new(p.clone()),
         });
         println!("n: {}", n);

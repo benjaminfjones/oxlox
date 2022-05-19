@@ -49,12 +49,10 @@ impl Scanner {
         self.current = 0;
         let mut tokens: Vec<Token> = Vec::new();
         let mut errs: Vec<ScanError> = Vec::new();
-        ret_tokens
-            .into_iter()
-            .for_each(|val| match val {
-                Ok(t) => tokens.push(t),
-                Err(e) => errs.push(e),
-            });
+        ret_tokens.into_iter().for_each(|val| match val {
+            Ok(t) => tokens.push(t),
+            Err(e) => errs.push(e),
+        });
         if errs.is_empty() {
             Ok(tokens)
         } else {

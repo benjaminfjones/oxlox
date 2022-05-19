@@ -11,11 +11,18 @@
 ///                | primary ;
 /// primary        → NUMBER | STRING | "true" | "false" | "nil"
 ///                | "(" expression ")" ;
-
-use crate::{token::{Token, TokenType, TokenLiteral}, ast::expr::{Expr, BinaryExpr, UnaryExpr, LiteralExpr, GroupingExpr}};
+use crate::{
+    ast::expr::{BinaryExpr, Expr, GroupingExpr, LiteralExpr, UnaryExpr},
+    token::{Token, TokenLiteral, TokenType},
+};
 
 const EQUALITY_OPERATORS: [TokenType; 2] = [TokenType::BangEqual, TokenType::EqualEqual];
-const COMPARISON_OPERATORS: [TokenType; 4] = [TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual];
+const COMPARISON_OPERATORS: [TokenType; 4] = [
+    TokenType::Greater,
+    TokenType::GreaterEqual,
+    TokenType::Less,
+    TokenType::LessEqual,
+];
 const TERM_OPERATORS: [TokenType; 2] = [TokenType::Plus, TokenType::Minus];
 const FACTOR_OPERATORS: [TokenType; 2] = [TokenType::Star, TokenType::Slash];
 const UNARY_OPERATORS: [TokenType; 2] = [TokenType::Bang, TokenType::Minus];
@@ -36,10 +43,7 @@ impl Parser {
     ///   * 0 <= self.current < self.tokens.len()
     pub fn new(tokens: Vec<Token>) -> Self {
         assert!(!tokens.is_empty() && tokens.last().unwrap().typ == TokenType::Eof);
-        Parser {
-            tokens,
-            current: 0,
-        }
+        Parser { tokens, current: 0 }
     }
 
     fn peek(&self) -> &Token {
@@ -101,13 +105,21 @@ impl Parser {
         self.parse_equality()
     }
 
-    fn parse_binary_association(&mut self, operators: &[TokenType], operand_parser: fn(&mut Self) -> Result<Expr, ParseError>) -> Result<Expr, ParseError> {
+    fn parse_binary_association(
+        &mut self,
+        operators: &[TokenType],
+        operand_parser: fn(&mut Self) -> Result<Expr, ParseError>,
+    ) -> Result<Expr, ParseError> {
         let mut expr: Expr = operand_parser(self)?;
 
         while self.match_any_token(operators) {
             let operator = self.previous_cloned();
             let right = operand_parser(self)?;
-            expr = Expr::Binary(BinaryExpr { left: Box::new(expr), operator, right: Box::new(right) });
+            expr = Expr::Binary(BinaryExpr {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            });
         }
 
         Ok(expr)
@@ -116,7 +128,6 @@ impl Parser {
     pub fn parse_equality(&mut self) -> Result<Expr, ParseError> {
         self.parse_binary_association(&EQUALITY_OPERATORS, Parser::parse_comparison)
     }
-
 
     pub fn parse_comparison(&mut self) -> Result<Expr, ParseError> {
         self.parse_binary_association(&COMPARISON_OPERATORS, Parser::parse_term)
@@ -134,7 +145,10 @@ impl Parser {
         if self.match_any_token(&UNARY_OPERATORS) {
             let operator = self.previous_cloned();
             let expr = self.parse_unary()?;
-            Ok(Expr::Unary(UnaryExpr { operator, right: Box::new(expr) }))
+            Ok(Expr::Unary(UnaryExpr {
+                operator,
+                right: Box::new(expr),
+            }))
         } else {
             self.parse_primary()
         }
@@ -160,28 +174,48 @@ impl Parser {
         } else if self.match_token(&TokenType::LeftParen) {
             let expr = self.parse_expression()?;
             if !self.match_token(&TokenType::RightParen) {
-                Err(ParseError(format!("expected RightParen, but found {:?}", self.peek())))
+                Err(ParseError(format!(
+                    "expected RightParen, but found {:?}",
+                    self.peek()
+                )))
             } else {
-                Ok(Expr::Grouping(GroupingExpr { expr: Box::new(expr) }))
+                Ok(Expr::Grouping(GroupingExpr {
+                    expr: Box::new(expr),
+                }))
             }
         } else {
             Err(ParseError(format!("unexpected token {:?}", self.peek())))
         }
-
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{src_loc::SrcLoc, scanner::Scanner};
+    use crate::{scanner::Scanner, src_loc::SrcLoc};
 
     use super::*;
 
     #[test]
     fn test_parser_init() {
         let tokens = vec![
-            Token::new(TokenType::Identifier, Some("foo".to_string()), None, SrcLoc { offset: 0, length: 3 }),
-            Token::new(TokenType::Eof, None, None, SrcLoc { offset: 3, length: 0 }),
+            Token::new(
+                TokenType::Identifier,
+                Some("foo".to_string()),
+                None,
+                SrcLoc {
+                    offset: 0,
+                    length: 3,
+                },
+            ),
+            Token::new(
+                TokenType::Eof,
+                None,
+                None,
+                SrcLoc {
+                    offset: 3,
+                    length: 0,
+                },
+            ),
         ];
 
         let parser = Parser::new(tokens);
@@ -194,8 +228,24 @@ mod test {
     fn test_parser_bad_init() {
         // doesn't end with EOF
         let tokens = vec![
-            Token::new(TokenType::Identifier, Some("foo".to_string()), None, SrcLoc { offset: 0, length: 3 }),
-            Token::new(TokenType::Identifier, Some("bar".to_string()), None, SrcLoc { offset: 0, length: 3 }),
+            Token::new(
+                TokenType::Identifier,
+                Some("foo".to_string()),
+                None,
+                SrcLoc {
+                    offset: 0,
+                    length: 3,
+                },
+            ),
+            Token::new(
+                TokenType::Identifier,
+                Some("bar".to_string()),
+                None,
+                SrcLoc {
+                    offset: 0,
+                    length: 3,
+                },
+            ),
         ];
 
         let _parser = Parser::new(tokens);
@@ -203,7 +253,9 @@ mod test {
 
     #[test]
     fn test_parser_state() {
-        let tokens = Scanner::new("1 + 1 == 2".to_string()).scan().expect("scan failed");
+        let tokens = Scanner::new("1 + 1 == 2".to_string())
+            .scan()
+            .expect("scan failed");
         let mut parser = Parser::new(tokens);
         assert_eq!(parser.current, 0);
         assert!(parser.match_token(&TokenType::Number));
@@ -212,79 +264,121 @@ mod test {
 
     #[test]
     fn test_parse_expression_one_plus_one_equals_2() {
-        let tokens = Scanner::new("1 + 1 == 2".to_string()).scan().expect("scan failed");
-        let expr = Parser::new(tokens).parse_expression().expect("unexpected parser error");
+        let tokens = Scanner::new("1 + 1 == 2".to_string())
+            .scan()
+            .expect("scan failed");
+        let expr = Parser::new(tokens)
+            .parse_expression()
+            .expect("unexpected parser error");
         match expr {
-            Expr::Binary(BinaryExpr { left: l, operator: o, right: r }) => {
+            Expr::Binary(BinaryExpr {
+                left: l,
+                operator: o,
+                right: r,
+            }) => {
                 match *l {
-                    Expr::Binary(BinaryExpr { left: ll, operator: lo, right: lr }) => {
+                    Expr::Binary(BinaryExpr {
+                        left: ll,
+                        operator: lo,
+                        right: lr,
+                    }) => {
                         assert!(matches!(*ll, Expr::Literal(_)));
                         assert_eq!(lo.typ, TokenType::Plus);
                         assert!(matches!(*lr, Expr::Literal(_)));
-                    },
+                    }
                     _ => panic!("parsed wrong LHS expression type"),
                 }
                 assert_eq!(o.typ, TokenType::EqualEqual);
                 assert!(matches!(*r, Expr::Literal(_)));
-            },
+            }
             _ => panic!("parsed wrong expression type"),
         }
     }
 
     #[test]
     fn test_parse_expression_2_equals_one_plus_one() {
-        let tokens = Scanner::new("2 == 1 + 1".to_string()).scan().expect("scan failed");
-        let expr = Parser::new(tokens).parse_expression().expect("unexpected parser error");
+        let tokens = Scanner::new("2 == 1 + 1".to_string())
+            .scan()
+            .expect("scan failed");
+        let expr = Parser::new(tokens)
+            .parse_expression()
+            .expect("unexpected parser error");
         match expr {
-            Expr::Binary(BinaryExpr { left: l, operator: o, right: r }) => {
+            Expr::Binary(BinaryExpr {
+                left: l,
+                operator: o,
+                right: r,
+            }) => {
                 assert!(matches!(*l, Expr::Literal(_)));
                 assert_eq!(o.typ, TokenType::EqualEqual);
                 match *r {
-                    Expr::Binary(BinaryExpr { left: rl, operator: ro, right: rr }) => {
+                    Expr::Binary(BinaryExpr {
+                        left: rl,
+                        operator: ro,
+                        right: rr,
+                    }) => {
                         assert!(matches!(*rl, Expr::Literal(_)));
                         assert_eq!(ro.typ, TokenType::Plus);
                         assert!(matches!(*rr, Expr::Literal(_)));
-                    },
+                    }
                     _ => panic!("parsed wrong RHS expression type"),
                 }
-            },
+            }
             _ => panic!("parsed wrong expression type"),
         }
     }
 
     #[test]
     fn test_parse_expression_grouping() {
-        let tokens = Scanner::new("(1 - 1) - 1".to_string()).scan().expect("scan failed");
-        let expr = Parser::new(tokens).parse_expression().expect("unexpected parser error");
+        let tokens = Scanner::new("(1 - 1) - 1".to_string())
+            .scan()
+            .expect("scan failed");
+        let expr = Parser::new(tokens)
+            .parse_expression()
+            .expect("unexpected parser error");
         match expr {
-            Expr::Binary(BinaryExpr { left: l, operator: o, right: r }) => {
+            Expr::Binary(BinaryExpr {
+                left: l,
+                operator: o,
+                right: r,
+            }) => {
                 assert!(matches!(*l, Expr::Grouping(_)));
                 assert_eq!(o.typ, TokenType::Minus);
                 assert!(matches!(*r, Expr::Literal(_)));
-            },
+            }
             _ => panic!("parsed wrong expression type"),
         }
     }
 
     #[test]
     fn test_parse_expression_invalid_grouping() {
-        let tokens = Scanner::new("(1 - 1".to_string()).scan().expect("scan failed");
+        let tokens = Scanner::new("(1 - 1".to_string())
+            .scan()
+            .expect("scan failed");
         let ParseError(err_msg) = Parser::new(tokens).parse_expression().unwrap_err();
         assert!(err_msg.contains("expected RightParen"));
     }
 
     #[test]
     fn test_parse_expression_unary() {
-        let tokens = Scanner::new("-1 >= -2".to_string()).scan().expect("scan failed");
+        let tokens = Scanner::new("-1 >= -2".to_string())
+            .scan()
+            .expect("scan failed");
         assert!(Parser::new(tokens).parse_expression().is_ok());
 
-        let tokens = Scanner::new("-(-1) >= 0".to_string()).scan().expect("scan failed");
+        let tokens = Scanner::new("-(-1) >= 0".to_string())
+            .scan()
+            .expect("scan failed");
         assert!(Parser::new(tokens).parse_expression().is_ok());
 
-        let tokens = Scanner::new("1 - -1".to_string()).scan().expect("scan failed");
+        let tokens = Scanner::new("1 - -1".to_string())
+            .scan()
+            .expect("scan failed");
         assert!(Parser::new(tokens).parse_expression().is_ok());
 
-        let tokens = Scanner::new("!true == false".to_string()).scan().expect("scan failed");
+        let tokens = Scanner::new("!true == false".to_string())
+            .scan()
+            .expect("scan failed");
         println!("{:?}", tokens);
         assert!(Parser::new(tokens).parse_expression().is_ok());
     }
