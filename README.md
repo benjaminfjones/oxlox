@@ -4,6 +4,18 @@ A Lox interpreter.
 
 Code written while reading and practising with https://craftinginterpreters.com/
 
+There are several places where this implementation diverges from the reference
+implementations `jlox`, and `clox`. I'm documenting these as I go...
+
+`oxlox` ...
+*  uses `i64` as the underlying primitive number type. I don't care to
+  support floating point arithmetic and the complexities it imposes, e.g.
+  interpreting numerical equality.
+* disallows generic object equality in favor of static type equality (may
+  revisit this decision later)
+* uses idiomatic rust return value based error handling generally,
+  instead of exceptions.
+
 ## Development
 
 [![Rust](https://github.com/benjaminfjones/oxlox/actions/workflows/rust.yml/badge.svg)](https://github.com/benjaminfjones/oxlox/actions/workflows/rust.yml)
