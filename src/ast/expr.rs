@@ -13,6 +13,22 @@ pub enum Expr {
 
 /// The application of a binary operation to two expressions.
 ///
+/// The valid binary operator tokens are:
+///
+/// Arithmetic:
+///   - Minus
+///   - Plus
+///   - Slash
+///   - Star
+/// Equality:
+///   - BangEqual
+///   - EqualEqual
+/// Comparison:
+///   - Greater
+///   - GreaterEqual
+///   - Less
+///   - LessEqual
+///
 /// This type owns pointers to other expressions and a copy of the operator token.
 #[derive(Clone, Debug)]
 pub struct BinaryExpr {

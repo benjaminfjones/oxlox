@@ -126,6 +126,11 @@ impl Token {
     pub fn is_eof(&self) -> bool {
         self.typ == TokenType::Eof
     }
+
+    /// Produce a dummy token for testing purposes
+    pub fn dummy() -> Self {
+        Self::eof(0)
+    }
 }
 
 impl fmt::Display for Token {
