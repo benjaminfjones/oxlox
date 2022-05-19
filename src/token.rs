@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::src_loc::SrcLoc;
+use crate::{src_loc::SrcLoc, ptypes::PInt};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenType {
@@ -80,7 +80,7 @@ pub fn lookup_keyword(val: &str) -> Option<TokenType> {
 pub enum TokenLiteral {
     Identifier(String),
     String(String),
-    Number(f64),
+    Number(PInt),
 }
 
 /// Tokens

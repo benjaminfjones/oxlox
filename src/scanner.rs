@@ -3,6 +3,7 @@
 /// Look ma, no regex!
 use std::char;
 
+use crate::ptypes::PInt;
 use crate::src_loc::SrcLoc;
 use crate::token::{lookup_keyword, Token, TokenLiteral, TokenType};
 
@@ -148,35 +149,9 @@ impl Scanner {
             self.advance();
         }
 
-        if self.peek() == Some('.') {
-            if let Some(nc) = self.peek_next() {
-                if nc.is_digit(10) {
-                    // consume the '.'
-                    self.advance();
-                } else {
-                    self.tokens.push(Err(ScanError::new(
-                        "number missing fractional part".to_string(),
-                    )));
-                    return;
-                }
-            } else {
-                self.tokens.push(Err(ScanError::new(
-                    "unterminated numeric literal".to_string(),
-                )));
-                return;
-            }
-            while let Some(c) = self.peek() {
-                if !c.is_digit(10) {
-                    // end of the fractional number part of the lexeme
-                    break;
-                }
-                self.advance();
-            }
-        }
-
         let span: String = self.source[self.start..self.current].iter().collect();
-        // attempt to parse as f64
-        let t: Result<Token, ScanError> = match span.parse::<f64>() {
+        // attempt to parse a PInt
+        let t: Result<Token, ScanError> = match span.parse::<PInt>() {
             Ok(n) => Ok(Token::new(
                 TokenType::Number,
                 Some(span),
@@ -231,6 +206,7 @@ impl Scanner {
     }
 
     /// Return the next character after the current source pointer, or None if that is beyond the end.
+    #[allow(dead_code)]
     fn peek_next(&self) -> Option<char> {
         if self.current + 1 < self.source.len() {
             Some(self.source[self.current + 1])
@@ -415,29 +391,5 @@ mod test {
         assert!(contains_token_type(TokenType::EqualEqual, &toks));
         assert!(contains_token_type(TokenType::Eof, &toks));
         assert!(ends_with_eof(&toks));
-    }
-
-    #[test]
-    fn test_scan_bad_numbers() {
-        let input = "var pi = 3.;".to_string();
-        let res = Scanner::new(input).scan();
-        assert_eq!(
-            res.unwrap_err(),
-            vec![ScanError::new("number missing fractional part".to_string())]
-        );
-
-        let input = "var pi = 3.z;".to_string();
-        let res = Scanner::new(input).scan();
-        assert_eq!(
-            res.unwrap_err(),
-            vec![ScanError::new("number missing fractional part".to_string())]
-        );
-
-        let input = "var pi = 3.".to_string();
-        let res = Scanner::new(input).scan();
-        assert_eq!(
-            res.unwrap_err(),
-            vec![ScanError::new("unterminated numeric literal".to_string())]
-        );
     }
 }

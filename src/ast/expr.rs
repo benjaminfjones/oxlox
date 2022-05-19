@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::token::Token;
+use crate::{token::Token, ptypes::PInt};
 
 /// Top level expression type
 #[derive(Clone, Debug)]
@@ -32,7 +32,7 @@ pub struct GroupingExpr {
 pub enum LiteralExpr {
     Bool(bool),
     Nil,
-    Number(f64),
+    Number(PInt),
     String(String),
 }
 
@@ -72,8 +72,8 @@ mod test {
 
     #[test]
     fn test_print_expr() {
-        let n = Expr::Literal(LiteralExpr::Number(3.0));
-        let m = Expr::Literal(LiteralExpr::Number(0.123));
+        let n = Expr::Literal(LiteralExpr::Number(3));
+        let m = Expr::Literal(LiteralExpr::Number(4));
         let p = Expr::Binary(BinaryExpr {
             left: Box::new(n.clone()),
             operator: Token::new(TokenType::Star, Some("*".to_string()), None, SrcLoc::dummy()),
@@ -87,10 +87,10 @@ mod test {
         println!("n: {}", n);
         assert_eq!(format!("{}", n), "3".to_string());
         println!("m: {}", m);
-        assert_eq!(format!("{}", m), "0.123".to_string());
+        assert_eq!(format!("{}", m), "4".to_string());
         println!("p: {}", p);
-        assert_eq!(format!("{}", p), "(* 3 0.123)".to_string());
+        assert_eq!(format!("{}", p), "(* 3 4)".to_string());
         println!("q: {}", q);
-        assert_eq!(format!("{}", q), "(+ 3 (* 3 0.123))".to_string());
+        assert_eq!(format!("{}", q), "(+ 3 (* 3 4))".to_string());
     }
 }
