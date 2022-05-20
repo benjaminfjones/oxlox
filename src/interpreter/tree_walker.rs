@@ -1,86 +1,4 @@
-use crate::ptypes::PInt;
-
-#[derive(Debug)]
-pub struct RuntimeError(String);
-
-impl RuntimeError {
-    /// Produce a runtime error with source location, token, and error message
-    ///
-    /// TODO: Improve error reporting from a token, implement reporting in `src/token.rs`.
-    pub fn new(token: &Token, message: &str) -> Self {
-        let err_msg = format!(
-            "Runtime Error: {:?}:{:?}: {}",
-            token.src_loc, token.typ, message
-        );
-        RuntimeError(err_msg)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum RuntimeValue {
-    Bool(bool),
-    Nil,
-    Number(PInt),
-    String(String),
-}
-
-impl RuntimeValue {
-    /// Equality predicate for RuntimeValue.
-    ///
-    /// We implement this explicitly instead of deriving PartialEq, Eq so that we can return a
-    /// result of the correct type and also return errors when operand types are not
-    /// compatible.
-    pub fn eq_at_token(&self, other: &Self, token: &Token) -> Result<bool, RuntimeError> {
-        match (self, other) {
-            (RuntimeValue::Number(x), RuntimeValue::Number(y)) => Ok(x == y),
-            (RuntimeValue::String(s), RuntimeValue::String(t)) => Ok(s == t),
-            (RuntimeValue::Bool(b), RuntimeValue::Bool(c)) => Ok(b == c),
-            (RuntimeValue::Nil, RuntimeValue::Nil) => Ok(true),
-            _ => Err(RuntimeError::new(
-                token,
-                "equality type error: invalid operand types",
-            )),
-        }
-    }
-
-    pub fn ge_at_token(&self, other: &Self, token: &Token) -> Result<bool, RuntimeError> {
-        match (self, other) {
-            (RuntimeValue::Number(x), RuntimeValue::Number(y)) => Ok(x >= y),
-            _ => Err(RuntimeError::new(
-                token,
-                "comparison type error: invalid operand types",
-            )),
-        }
-    }
-
-    pub fn gt_at_token(&self, other: &Self, token: &Token) -> Result<bool, RuntimeError> {
-        match (self, other) {
-            (RuntimeValue::Number(x), RuntimeValue::Number(y)) => Ok(x > y),
-            _ => Err(RuntimeError::new(
-                token,
-                "comparison type error: invalid operand types",
-            )),
-        }
-    }
-}
-
-fn assert_runtime_number(val: RuntimeValue) -> Result<PInt, RuntimeError> {
-    match val {
-        RuntimeValue::Number(x) => Ok(x),
-        _ => Err(RuntimeError(format!("expected number, got: {:?}", val))),
-    }
-}
-
-/// Coerce a runtime value to a boolean.
-///
-/// Nil and Bool(false) coerce to false, everything else coerces to true.
-fn is_truthy(val: RuntimeValue) -> bool {
-    match val {
-        RuntimeValue::Bool(b) => b,
-        RuntimeValue::Nil => false,
-        _ => true,
-    }
-}
+use super::runtime::{assert_runtime_number, RuntimeError, RuntimeValue};
 
 pub trait Interpreter {
     fn interpret(&self) -> Result<RuntimeValue, RuntimeError>;
@@ -92,7 +10,7 @@ pub trait Interpreter {
 
 use crate::{
     ast::expr::{Expr, GroupingExpr, LiteralExpr},
-    token::{Token, TokenType},
+    token::TokenType,
 };
 
 impl Interpreter for LiteralExpr {
@@ -176,12 +94,12 @@ impl Interpreter for Expr {
             Expr::Unary(ue) => {
                 let right_val = ue.right.interpret()?;
                 match &ue.operator.typ {
-                    TokenType::Bang => Ok(RuntimeValue::Bool(!is_truthy(right_val))),
+                    TokenType::Bang => Ok(RuntimeValue::Bool(!right_val.is_truthy())),
                     TokenType::Minus => {
                         let right_num = assert_runtime_number(right_val)?;
                         Ok(RuntimeValue::Number(-right_num))
                     }
-                    o => Err(RuntimeError(format!("unexpected unary operator {:?}", o))),
+                    _o => Err(RuntimeError::new(&ue.operator, "unexpected unary operator")),
                 }
             }
             Expr::Variable(_) => panic!("variable interpretation not implemented!"),
@@ -197,7 +115,9 @@ impl Interpreter for GroupingExpr {
 
 #[cfg(test)]
 mod test {
+    use crate::ptypes::PInt;
     use crate::{parser::Parser, scanner::Scanner};
+    use std::convert::Into;
 
     use super::*;
 
@@ -311,10 +231,12 @@ mod test {
     // TODO: report better runtime type errors
     #[test]
     fn test_equality_type_error() {
-        let err = interpret_to_runtime_value("1 + true == 2").unwrap_err();
+        let err: String = interpret_to_runtime_value("1 + true == 2")
+            .unwrap_err()
+            .into();
         let expected_msg =
             "Runtime Error: SrcLoc { offset: 2, length: 1 }:Plus: invalid operand types";
-        assert_eq!(err.0, expected_msg.to_string());
+        assert_eq!(err, expected_msg.to_string());
     }
 
     #[test]
@@ -330,8 +252,10 @@ mod test {
 
     #[test]
     fn test_comparison_type_error() {
-        let err = interpret_to_runtime_value("1 >= \"one\"").unwrap_err();
+        let err: String = interpret_to_runtime_value("1 >= \"one\"")
+            .unwrap_err()
+            .into();
         let expected_msg = "Runtime Error: SrcLoc { offset: 2, length: 2 }:GreaterEqual: comparison type error: invalid operand types";
-        assert_eq!(err.0, expected_msg.to_string());
+        assert_eq!(err, expected_msg.to_string());
     }
 }
