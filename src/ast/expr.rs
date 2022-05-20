@@ -9,6 +9,7 @@ pub enum Expr {
     Grouping(GroupingExpr),
     Literal(LiteralExpr),
     Unary(UnaryExpr),
+    Variable(Token),
 }
 
 /// The application of a binary operation to two expressions.
@@ -77,6 +78,7 @@ impl fmt::Display for Expr {
             Expr::Grouping(e) => write!(f, "(grouping {})", e.expr),
             Expr::Literal(e) => write!(f, "{}", e),
             Expr::Unary(e) => write!(f, "({} {})", e.operator, e.right),
+            Expr::Variable(t) => write!(f, "{}", t.lexeme.as_ref().unwrap()),
         }
     }
 }

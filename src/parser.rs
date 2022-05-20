@@ -1,5 +1,14 @@
 /// A hand-rolled recursive decent parser for the following grammar:
 ///
+/// Statement grammar, stratified into higher precedence statements (like declarations) and lower
+/// precedence ones (like expression statements).
+///
+/// program        → (declaration)* EOF
+/// declaration    → "var" IDENTIFIER ("=" expression) ";"
+///                | statement ;
+/// statement      → "print" expression ";"
+///                | expression ";" ;
+///
 /// Expression grammar, stratified according to precedent and associativity.
 ///
 /// expression     → equality ;
@@ -12,7 +21,10 @@
 /// primary        → NUMBER | STRING | "true" | "false" | "nil"
 ///                | "(" expression ")" ;
 use crate::{
-    ast::expr::{BinaryExpr, Expr, GroupingExpr, LiteralExpr, UnaryExpr},
+    ast::{
+        expr::{BinaryExpr, Expr, GroupingExpr, LiteralExpr, UnaryExpr},
+        stmt::{Program, Stmt, VarDeclaration},
+    },
     token::{Token, TokenLiteral, TokenType},
 };
 
@@ -173,6 +185,7 @@ impl Parser {
             }
         } else if self.match_token(&TokenType::LeftParen) {
             let expr = self.parse_expression()?;
+            // match and consume closing paren
             if !self.match_token(&TokenType::RightParen) {
                 Err(ParseError(format!(
                     "expected RightParen, but found {:?}",
@@ -183,9 +196,66 @@ impl Parser {
                     expr: Box::new(expr),
                 }))
             }
+        } else if self.match_token(&TokenType::Identifier) {
+            let t = self.previous_cloned();
+            Ok(Expr::Variable(t))
         } else {
             Err(ParseError(format!("unexpected token {:?}", self.peek())))
         }
+    }
+
+    fn parse_program(&mut self) -> Result<Program, ParseError> {
+        let mut statements = Vec::new();
+        while !self.at_end() {
+            let stmt = self.parse_declaration()?;
+            statements.push(stmt);
+        }
+
+        Ok(Program::new(statements))
+    }
+
+    fn consume(&mut self, token_type: &TokenType) -> Result<Token, ParseError> {
+        if !self.match_token(token_type) {
+            Err(ParseError(format!(
+                "expected token type {:?}, but found {:?}",
+                token_type,
+                self.peek(),
+            )))
+        } else {
+            Ok(self.previous_cloned())
+        }
+    }
+
+    fn parse_declaration(&mut self) -> Result<Stmt, ParseError> {
+        if self.match_token(&TokenType::Var) {
+            let id = self.consume(&TokenType::Identifier)?;
+            let name = id.lexeme.as_ref().unwrap().to_string();
+            let initializer = if self.match_token(&TokenType::Equal) {
+                Some(Box::new(self.parse_expression()?))
+            } else {
+                None
+            };
+            self.consume(&TokenType::Semicolon)?;
+            Ok(Stmt::Var(VarDeclaration { name, initializer }))
+        } else {
+            self.parse_statement()
+        }
+    }
+
+    fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
+        if self.match_token(&TokenType::Print) {
+            let expr = self.parse_expression()?;
+            self.consume(&TokenType::Semicolon)?;
+            Ok(Stmt::Print(Box::new(expr)))
+        } else {
+            let expr = self.parse_expression()?;
+            self.consume(&TokenType::Semicolon)?;
+            Ok(Stmt::Expr(Box::new(expr)))
+        }
+    }
+
+    pub fn parse(&mut self) -> Result<Program, ParseError> {
+        self.parse_program()
     }
 }
 
@@ -194,6 +264,11 @@ mod test {
     use crate::{scanner::Scanner, src_loc::SrcLoc};
 
     use super::*;
+
+    fn parse_to_expression(code: &str) -> Result<Expr, ParseError> {
+        let tokens = Scanner::new(code.to_string()).scan().expect("scan failed");
+        Parser::new(tokens).parse_expression()
+    }
 
     #[test]
     fn test_parser_init() {
@@ -264,12 +339,7 @@ mod test {
 
     #[test]
     fn test_parse_expression_one_plus_one_equals_2() {
-        let tokens = Scanner::new("1 + 1 == 2".to_string())
-            .scan()
-            .expect("scan failed");
-        let expr = Parser::new(tokens)
-            .parse_expression()
-            .expect("unexpected parser error");
+        let expr = parse_to_expression("1 + 1 == 2").unwrap();
         match expr {
             Expr::Binary(BinaryExpr {
                 left: l,
@@ -297,12 +367,7 @@ mod test {
 
     #[test]
     fn test_parse_expression_2_equals_one_plus_one() {
-        let tokens = Scanner::new("2 == 1 + 1".to_string())
-            .scan()
-            .expect("scan failed");
-        let expr = Parser::new(tokens)
-            .parse_expression()
-            .expect("unexpected parser error");
+        let expr = parse_to_expression("2 == 1 + 1").unwrap();
         match expr {
             Expr::Binary(BinaryExpr {
                 left: l,
@@ -330,12 +395,7 @@ mod test {
 
     #[test]
     fn test_parse_expression_grouping() {
-        let tokens = Scanner::new("(1 - 1) - 1".to_string())
-            .scan()
-            .expect("scan failed");
-        let expr = Parser::new(tokens)
-            .parse_expression()
-            .expect("unexpected parser error");
+        let expr = parse_to_expression("(1 - 1) - 1").unwrap();
         match expr {
             Expr::Binary(BinaryExpr {
                 left: l,
@@ -352,34 +412,32 @@ mod test {
 
     #[test]
     fn test_parse_expression_invalid_grouping() {
-        let tokens = Scanner::new("(1 - 1".to_string())
-            .scan()
-            .expect("scan failed");
-        let ParseError(err_msg) = Parser::new(tokens).parse_expression().unwrap_err();
+        let ParseError(err_msg) = parse_to_expression("(1 - 1").unwrap_err();
         assert!(err_msg.contains("expected RightParen"));
     }
 
     #[test]
     fn test_parse_expression_unary() {
-        let tokens = Scanner::new("-1 >= -2".to_string())
-            .scan()
-            .expect("scan failed");
-        assert!(Parser::new(tokens).parse_expression().is_ok());
+        assert!(parse_to_expression("-1 >= -2").is_ok());
+        assert!(parse_to_expression("-(-1) >= 0").is_ok());
+        assert!(parse_to_expression("1 - -1").is_ok());
+        assert!(parse_to_expression("!true == false").is_ok());
+    }
 
-        let tokens = Scanner::new("-(-1) >= 0".to_string())
-            .scan()
-            .expect("scan failed");
-        assert!(Parser::new(tokens).parse_expression().is_ok());
+    fn parse_to_program(code: &str) -> Result<Program, ParseError> {
+        let tokens = Scanner::new(code.to_string()).scan().expect("scan failed");
+        Parser::new(tokens).parse()
+    }
 
-        let tokens = Scanner::new("1 - -1".to_string())
-            .scan()
-            .expect("scan failed");
-        assert!(Parser::new(tokens).parse_expression().is_ok());
+    #[test]
+    fn test_parse_trivial_expr_program() {
+        let prg = parse_to_program("1 + 1;").unwrap();
+        assert_eq!(prg.statements().len(), 1);
+    }
 
-        let tokens = Scanner::new("!true == false".to_string())
-            .scan()
-            .expect("scan failed");
-        println!("{:?}", tokens);
-        assert!(Parser::new(tokens).parse_expression().is_ok());
+    #[test]
+    fn test_parse_trivial_var_print_program() {
+        let prg = parse_to_program("var x = 0; var y = x + 1; print y + 1;").unwrap();
+        assert_eq!(prg.statements().len(), 3);
     }
 }

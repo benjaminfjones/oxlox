@@ -184,6 +184,7 @@ impl Interpreter for Expr {
                     o => Err(RuntimeError(format!("unexpected unary operator {:?}", o))),
                 }
             }
+            Expr::Variable(_) => panic!("variable interpretation not implemented!"),
         }
     }
 }
