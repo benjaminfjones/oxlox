@@ -1,7 +1,8 @@
-use super::runtime::{assert_runtime_number, RuntimeError, RuntimeValue};
+use super::runtime::{assert_runtime_number, RuntimeValue};
+use crate::error::{BaseError, ErrorType};
 
 pub trait Interpreter {
-    fn interpret(&self) -> Result<RuntimeValue, RuntimeError>;
+    fn interpret(&self) -> Result<RuntimeValue, BaseError>;
 }
 
 //
@@ -14,7 +15,7 @@ use crate::{
 };
 
 impl Interpreter for LiteralExpr {
-    fn interpret(&self) -> Result<RuntimeValue, RuntimeError> {
+    fn interpret(&self) -> Result<RuntimeValue, BaseError> {
         Ok(match self {
             LiteralExpr::Bool(b) => RuntimeValue::Bool(*b),
             LiteralExpr::Nil => RuntimeValue::Nil,
@@ -25,7 +26,7 @@ impl Interpreter for LiteralExpr {
 }
 
 impl Interpreter for Expr {
-    fn interpret(&self) -> Result<RuntimeValue, RuntimeError> {
+    fn interpret(&self) -> Result<RuntimeValue, BaseError> {
         match self {
             Expr::Binary(be) => {
                 let left_val = be.left.interpret()?;
@@ -39,22 +40,25 @@ impl Interpreter for Expr {
                         (RuntimeValue::String(s), RuntimeValue::String(t)) => {
                             Ok(RuntimeValue::String(s + &t))
                         }
-                        _ => Err(RuntimeError::new(&be.operator, "invalid operand types")),
+                        _ => Err(
+                            BaseError::new(ErrorType::RuntimeError, "invalid operand types")
+                                .with_token(be.operator.to_owned()),
+                        ),
                     },
                     TokenType::Minus => {
-                        let left_num = assert_runtime_number(left_val)?;
-                        let right_num = assert_runtime_number(right_val)?;
+                        let left_num = assert_runtime_number(left_val, &be.operator)?;
+                        let right_num = assert_runtime_number(right_val, &be.operator)?;
                         Ok(RuntimeValue::Number(left_num - right_num))
                     }
                     TokenType::Star => {
-                        let left_num = assert_runtime_number(left_val)?;
-                        let right_num = assert_runtime_number(right_val)?;
+                        let left_num = assert_runtime_number(left_val, &be.operator)?;
+                        let right_num = assert_runtime_number(right_val, &be.operator)?;
                         Ok(RuntimeValue::Number(left_num * right_num))
                     }
                     TokenType::Slash => {
-                        let left_num = assert_runtime_number(left_val)?;
-                        let right_num = assert_runtime_number(right_val)?;
-                        // TODO: handle div by 0 gracefully as a RuntimeError
+                        let left_num = assert_runtime_number(left_val, &be.operator)?;
+                        let right_num = assert_runtime_number(right_val, &be.operator)?;
+                        // TODO: handle div by 0 gracefully as a BaseError
                         Ok(RuntimeValue::Number(left_num / right_num))
                     }
 
@@ -86,7 +90,10 @@ impl Interpreter for Expr {
                         Ok(RuntimeValue::Bool(!b))
                     }
 
-                    _ => Err(RuntimeError::new(&be.operator, "upsupported operator")),
+                    _ => Err(
+                        BaseError::new(ErrorType::RuntimeError, "upsupported operator")
+                            .with_token(be.operator.to_owned()),
+                    ),
                 }
             }
             Expr::Grouping(ge) => ge.interpret(),
@@ -96,10 +103,13 @@ impl Interpreter for Expr {
                 match &ue.operator.typ {
                     TokenType::Bang => Ok(RuntimeValue::Bool(!right_val.is_truthy())),
                     TokenType::Minus => {
-                        let right_num = assert_runtime_number(right_val)?;
+                        let right_num = assert_runtime_number(right_val, &ue.operator)?;
                         Ok(RuntimeValue::Number(-right_num))
                     }
-                    _o => Err(RuntimeError::new(&ue.operator, "unexpected unary operator")),
+                    _o => Err(
+                        BaseError::new(ErrorType::RuntimeError, "unexpected unary operator")
+                            .with_token(ue.operator.to_owned()),
+                    ),
                 }
             }
             Expr::Variable(_) => panic!("variable interpretation not implemented!"),
@@ -108,7 +118,7 @@ impl Interpreter for Expr {
 }
 
 impl Interpreter for GroupingExpr {
-    fn interpret(&self) -> Result<RuntimeValue, RuntimeError> {
+    fn interpret(&self) -> Result<RuntimeValue, BaseError> {
         (*self.expr).interpret()
     }
 }
@@ -121,7 +131,7 @@ mod test {
 
     use super::*;
 
-    fn interpret_to_runtime_value(code: &str) -> Result<RuntimeValue, RuntimeError> {
+    fn interpret_to_runtime_value(code: &str) -> Result<RuntimeValue, BaseError> {
         let tokens = Scanner::new(code.to_string()).scan().expect("scan failed");
         let expr = Parser::new(tokens)
             .parse_expression()
@@ -129,14 +139,14 @@ mod test {
         expr.interpret()
     }
 
-    fn assert_runtime_number(res: Result<RuntimeValue, RuntimeError>) -> PInt {
+    fn assert_runtime_number(res: Result<RuntimeValue, BaseError>) -> PInt {
         match res {
             Ok(RuntimeValue::Number(x)) => x,
             _ => panic!("expected runtime number value"),
         }
     }
 
-    fn assert_runtime_bool(res: Result<RuntimeValue, RuntimeError>) -> bool {
+    fn assert_runtime_bool(res: Result<RuntimeValue, BaseError>) -> bool {
         match res {
             Ok(RuntimeValue::Bool(b)) => b,
             _ => panic!("expected runtime bool value"),
@@ -228,14 +238,15 @@ mod test {
         )));
     }
 
-    // TODO: report better runtime type errors
     #[test]
     fn test_equality_type_error() {
-        let err: String = interpret_to_runtime_value("1 + true == 2")
-            .unwrap_err()
-            .into();
-        let expected_msg =
-            "Runtime Error: SrcLoc { offset: 2, length: 1 }:Plus: invalid operand types";
+        let err: String = interpret_to_runtime_value("1 + true").unwrap_err().into();
+        let expected_msg = "RuntimeError:chars(2,3):invalid operand types";
+        assert_eq!(err, expected_msg.to_string());
+
+        // TODO: make +-/* operand type errors uniform
+        let err: String = interpret_to_runtime_value("1 * true").unwrap_err().into();
+        let expected_msg = "RuntimeError:chars(2,3):expected number, got: 'true'";
         assert_eq!(err, expected_msg.to_string());
     }
 
@@ -255,7 +266,7 @@ mod test {
         let err: String = interpret_to_runtime_value("1 >= \"one\"")
             .unwrap_err()
             .into();
-        let expected_msg = "Runtime Error: SrcLoc { offset: 2, length: 2 }:GreaterEqual: comparison type error: invalid operand types";
+        let expected_msg = "RuntimeError:chars(2,4):comparison type error: invalid operand types";
         assert_eq!(err, expected_msg.to_string());
     }
 }

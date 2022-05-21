@@ -1,29 +1,11 @@
 use std::collections::HashMap;
+use std::fmt;
 
-use crate::{ptypes::PInt, token::Token};
-
-/// Runtime errors produced during interpretation
-#[derive(Debug)]
-pub struct RuntimeError(String);
-
-impl From<RuntimeError> for String {
-    fn from(r: RuntimeError) -> Self {
-        r.0
-    }
-}
-
-impl RuntimeError {
-    /// Produce a runtime error with source location, token, and error message
-    ///
-    /// TODO: Improve error reporting from a token, implement reporting in `src/token.rs`.
-    pub fn new(token: &Token, message: &str) -> Self {
-        let err_msg = format!(
-            "Runtime Error: {:?}:{:?}: {}",
-            token.src_loc, token.typ, message
-        );
-        RuntimeError(err_msg)
-    }
-}
+use crate::{
+    error::{BaseError, ErrorType},
+    ptypes::PInt,
+    token::Token,
+};
 
 /// A runtime value for the tree walking interpreter
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,42 +16,56 @@ pub enum RuntimeValue {
     String(String),
 }
 
+impl fmt::Display for RuntimeValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RuntimeValue::Bool(b) => write!(f, "{}", b),
+            RuntimeValue::Nil => write!(f, "nil"),
+            RuntimeValue::Number(x) => write!(f, "{}", x),
+            RuntimeValue::String(s) => write!(f, "{}", &s),
+        }
+    }
+}
+
 impl RuntimeValue {
     /// Equality predicate for RuntimeValue.
     ///
     /// We implement this explicitly instead of deriving PartialEq, Eq so that we can return a
     /// result of the correct type and also return errors when operand types are not
     /// compatible.
-    pub fn eq_at_token(&self, other: &Self, token: &Token) -> Result<bool, RuntimeError> {
+    pub fn eq_at_token(&self, other: &Self, token: &Token) -> Result<bool, BaseError> {
         match (self, other) {
             (RuntimeValue::Number(x), RuntimeValue::Number(y)) => Ok(x == y),
             (RuntimeValue::String(s), RuntimeValue::String(t)) => Ok(s == t),
             (RuntimeValue::Bool(b), RuntimeValue::Bool(c)) => Ok(b == c),
             (RuntimeValue::Nil, RuntimeValue::Nil) => Ok(true),
-            _ => Err(RuntimeError::new(
-                token,
+            _ => Err(BaseError::new(
+                ErrorType::RuntimeError,
                 "equality type error: invalid operand types",
-            )),
+            )
+            .with_token(token.to_owned())),
         }
     }
 
-    pub fn ge_at_token(&self, other: &Self, token: &Token) -> Result<bool, RuntimeError> {
+    pub fn ge_at_token(&self, other: &Self, token: &Token) -> Result<bool, BaseError> {
         match (self, other) {
             (RuntimeValue::Number(x), RuntimeValue::Number(y)) => Ok(x >= y),
-            _ => Err(RuntimeError::new(
-                token,
+            _ => Err(BaseError::new(
+                ErrorType::RuntimeError,
                 "comparison type error: invalid operand types",
-            )),
+            )
+            .with_token(token.to_owned())),
         }
     }
 
-    pub fn gt_at_token(&self, other: &Self, token: &Token) -> Result<bool, RuntimeError> {
+    pub fn gt_at_token(&self, other: &Self, token: &Token) -> Result<bool, BaseError> {
         match (self, other) {
             (RuntimeValue::Number(x), RuntimeValue::Number(y)) => Ok(x > y),
-            _ => Err(RuntimeError::new(
-                token,
+            _ => Err(BaseError::new(
+                ErrorType::RuntimeError,
                 "comparison type error: invalid operand types",
-            )),
+            )
+            .with_token(token.to_owned())),
         }
     }
 
@@ -85,10 +81,14 @@ impl RuntimeValue {
     }
 }
 
-pub fn assert_runtime_number(val: RuntimeValue) -> Result<PInt, RuntimeError> {
+pub fn assert_runtime_number(val: RuntimeValue, token: &Token) -> Result<PInt, BaseError> {
     match val {
         RuntimeValue::Number(x) => Ok(x),
-        _ => Err(RuntimeError(format!("expected number, got: {:?}", val))),
+        _ => Err(BaseError::new(
+            ErrorType::RuntimeError,
+            &format!("expected number, got: '{}'", val),
+        )
+        .with_token(token.to_owned())),
     }
 }
 
