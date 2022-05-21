@@ -3,6 +3,10 @@
 /// Statement grammar, stratified into higher precedence statements (like declarations) and lower
 /// precedence ones (like expression statements).
 ///
+/// Parser error recovery is mainly handled at the statement (declaration) level. Errors that
+/// bubble up to that production are collected and the parser state synchronized to allow recovery
+/// to parse the next valid declaration.
+///
 /// program        → (declaration)* EOF
 /// declaration    → "var" IDENTIFIER ("=" expression) ";"
 ///                | statement ;
@@ -25,6 +29,7 @@ use crate::{
         expr::{BinaryExpr, Expr, GroupingExpr, LiteralExpr, UnaryExpr},
         stmt::{Program, Stmt, VarDeclaration},
     },
+    error::{BaseError, ErrorList, ErrorType},
     token::{Token, TokenLiteral, TokenType},
 };
 
@@ -38,9 +43,6 @@ const COMPARISON_OPERATORS: [TokenType; 4] = [
 const TERM_OPERATORS: [TokenType; 2] = [TokenType::Plus, TokenType::Minus];
 const FACTOR_OPERATORS: [TokenType; 2] = [TokenType::Star, TokenType::Slash];
 const UNARY_OPERATORS: [TokenType; 2] = [TokenType::Bang, TokenType::Minus];
-
-#[derive(Debug)]
-pub struct ParseError(String);
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -58,8 +60,16 @@ impl Parser {
         Parser { tokens, current: 0 }
     }
 
+    //
+    // Parser helper functions
+    //
+
     fn peek(&self) -> &Token {
         &self.tokens[self.current]
+    }
+
+    fn peek_owned(&self) -> Token {
+        self.tokens[self.current].clone()
     }
 
     /// Return a copy of the previous token.
@@ -113,120 +123,80 @@ impl Parser {
         }
     }
 
-    pub fn parse_expression(&mut self) -> Result<Expr, ParseError> {
-        self.parse_equality()
-    }
-
-    fn parse_binary_association(
-        &mut self,
-        operators: &[TokenType],
-        operand_parser: fn(&mut Self) -> Result<Expr, ParseError>,
-    ) -> Result<Expr, ParseError> {
-        let mut expr: Expr = operand_parser(self)?;
-
-        while self.match_any_token(operators) {
-            let operator = self.previous_cloned();
-            let right = operand_parser(self)?;
-            expr = Expr::Binary(BinaryExpr {
-                left: Box::new(expr),
-                operator,
-                right: Box::new(right),
-            });
-        }
-
-        Ok(expr)
-    }
-
-    pub fn parse_equality(&mut self) -> Result<Expr, ParseError> {
-        self.parse_binary_association(&EQUALITY_OPERATORS, Parser::parse_comparison)
-    }
-
-    pub fn parse_comparison(&mut self) -> Result<Expr, ParseError> {
-        self.parse_binary_association(&COMPARISON_OPERATORS, Parser::parse_term)
-    }
-
-    pub fn parse_term(&mut self) -> Result<Expr, ParseError> {
-        self.parse_binary_association(&TERM_OPERATORS, Parser::parse_factor)
-    }
-
-    pub fn parse_factor(&mut self) -> Result<Expr, ParseError> {
-        self.parse_binary_association(&FACTOR_OPERATORS, Parser::parse_unary)
-    }
-
-    pub fn parse_unary(&mut self) -> Result<Expr, ParseError> {
-        if self.match_any_token(&UNARY_OPERATORS) {
-            let operator = self.previous_cloned();
-            let expr = self.parse_unary()?;
-            Ok(Expr::Unary(UnaryExpr {
-                operator,
-                right: Box::new(expr),
-            }))
-        } else {
-            self.parse_primary()
-        }
-    }
-
-    pub fn parse_primary(&mut self) -> Result<Expr, ParseError> {
-        if self.match_token(&TokenType::False) {
-            Ok(Expr::Literal(LiteralExpr::Bool(false)))
-        } else if self.match_token(&TokenType::True) {
-            Ok(Expr::Literal(LiteralExpr::Bool(true)))
-        } else if self.match_token(&TokenType::Nil) {
-            Ok(Expr::Literal(LiteralExpr::Nil))
-        } else if self.match_token(&TokenType::String) {
-            match self.previous_cloned().literal {
-                Some(TokenLiteral::String(s)) => Ok(Expr::Literal(LiteralExpr::String(s))),
-                l => Err(ParseError(format!("expected String, but found {:?}", l))),
-            }
-        } else if self.match_token(&TokenType::Number) {
-            match self.previous_cloned().literal {
-                Some(TokenLiteral::Number(x)) => Ok(Expr::Literal(LiteralExpr::Number(x))),
-                l => Err(ParseError(format!("expected Number, but found {:?}", l))),
-            }
-        } else if self.match_token(&TokenType::LeftParen) {
-            let expr = self.parse_expression()?;
-            // match and consume closing paren
-            if !self.match_token(&TokenType::RightParen) {
-                Err(ParseError(format!(
-                    "expected RightParen, but found {:?}",
-                    self.peek()
-                )))
-            } else {
-                Ok(Expr::Grouping(GroupingExpr {
-                    expr: Box::new(expr),
-                }))
-            }
-        } else if self.match_token(&TokenType::Identifier) {
-            let t = self.previous_cloned();
-            Ok(Expr::Variable(t))
-        } else {
-            Err(ParseError(format!("unexpected token {:?}", self.peek())))
-        }
-    }
-
-    fn parse_program(&mut self) -> Result<Program, ParseError> {
-        let mut statements = Vec::new();
-        while !self.at_end() {
-            let stmt = self.parse_declaration()?;
-            statements.push(stmt);
-        }
-
-        Ok(Program::new(statements))
-    }
-
-    fn consume(&mut self, token_type: &TokenType) -> Result<Token, ParseError> {
+    fn consume(&mut self, token_type: &TokenType) -> Result<Token, BaseError> {
         if !self.match_token(token_type) {
-            Err(ParseError(format!(
-                "expected token type {:?}, but found {:?}",
-                token_type,
-                self.peek(),
-            )))
+            Err(BaseError::new(
+                ErrorType::ParseError,
+                &format!(
+                    "expected token type {:?}, but found {:?}",
+                    token_type,
+                    self.peek(),
+                ),
+            )
+            .with_token(self.peek_owned()))
         } else {
             Ok(self.previous_cloned())
         }
     }
 
-    fn parse_declaration(&mut self) -> Result<Stmt, ParseError> {
+    /// Recover from a parser error by synchronizing parser state with the next valid declaration
+    /// production.
+    fn synchronize_to_decl(&mut self) {
+        self.advance();
+        while !self.at_end() {
+            if self.previous_cloned().typ == TokenType::Semicolon {
+                return;
+            }
+
+            match self.peek().typ {
+                TokenType::Class
+                | TokenType::For
+                | TokenType::Fun
+                | TokenType::If
+                | TokenType::Print
+                | TokenType::Return
+                | TokenType::Var
+                | TokenType::While => {
+                    return;
+                }
+                _ => {
+                    self.advance();
+                }
+            }
+        }
+    }
+
+    //
+    // Parser productions
+    //
+
+    pub fn parse(&mut self) -> Result<Program, ErrorList> {
+        self.parse_program()
+    }
+
+    fn parse_program(&mut self) -> Result<Program, ErrorList> {
+        let mut statements = Vec::new();
+        let mut errors = ErrorList::default();
+        while !self.at_end() {
+            match self.parse_declaration() {
+                Ok(stmt) => {
+                    statements.push(stmt);
+                }
+                Err(parse_err) => {
+                    errors.add(parse_err);
+                    self.synchronize_to_decl();
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(Program::new(statements))
+        } else {
+            Err(errors)
+        }
+    }
+
+    fn parse_declaration(&mut self) -> Result<Stmt, BaseError> {
         if self.match_token(&TokenType::Var) {
             let id = self.consume(&TokenType::Identifier)?;
             let name = id.lexeme.as_ref().unwrap().to_string();
@@ -242,7 +212,7 @@ impl Parser {
         }
     }
 
-    fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
+    fn parse_statement(&mut self) -> Result<Stmt, BaseError> {
         if self.match_token(&TokenType::Print) {
             let expr = self.parse_expression()?;
             self.consume(&TokenType::Semicolon)?;
@@ -254,8 +224,104 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Program, ParseError> {
-        self.parse_program()
+    pub fn parse_expression(&mut self) -> Result<Expr, BaseError> {
+        self.parse_equality()
+    }
+
+    fn parse_binary_association(
+        &mut self,
+        operators: &[TokenType],
+        operand_parser: fn(&mut Self) -> Result<Expr, BaseError>,
+    ) -> Result<Expr, BaseError> {
+        let mut expr: Expr = operand_parser(self)?;
+
+        while self.match_any_token(operators) {
+            let operator = self.previous_cloned();
+            let right = operand_parser(self)?;
+            expr = Expr::Binary(BinaryExpr {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            });
+        }
+
+        Ok(expr)
+    }
+
+    pub fn parse_equality(&mut self) -> Result<Expr, BaseError> {
+        self.parse_binary_association(&EQUALITY_OPERATORS, Parser::parse_comparison)
+    }
+
+    pub fn parse_comparison(&mut self) -> Result<Expr, BaseError> {
+        self.parse_binary_association(&COMPARISON_OPERATORS, Parser::parse_term)
+    }
+
+    pub fn parse_term(&mut self) -> Result<Expr, BaseError> {
+        self.parse_binary_association(&TERM_OPERATORS, Parser::parse_factor)
+    }
+
+    pub fn parse_factor(&mut self) -> Result<Expr, BaseError> {
+        self.parse_binary_association(&FACTOR_OPERATORS, Parser::parse_unary)
+    }
+
+    pub fn parse_unary(&mut self) -> Result<Expr, BaseError> {
+        if self.match_any_token(&UNARY_OPERATORS) {
+            let operator = self.previous_cloned();
+            let expr = self.parse_unary()?;
+            Ok(Expr::Unary(UnaryExpr {
+                operator,
+                right: Box::new(expr),
+            }))
+        } else {
+            self.parse_primary()
+        }
+    }
+
+    pub fn parse_primary(&mut self) -> Result<Expr, BaseError> {
+        if self.match_token(&TokenType::False) {
+            Ok(Expr::Literal(LiteralExpr::Bool(false)))
+        } else if self.match_token(&TokenType::True) {
+            Ok(Expr::Literal(LiteralExpr::Bool(true)))
+        } else if self.match_token(&TokenType::Nil) {
+            Ok(Expr::Literal(LiteralExpr::Nil))
+        } else if self.match_token(&TokenType::String) {
+            match self.previous_cloned().literal {
+                Some(TokenLiteral::String(s)) => Ok(Expr::Literal(LiteralExpr::String(s))),
+                _ => {
+                    let err = BaseError::new(ErrorType::ParseError, "expected String")
+                        .with_token(self.previous_cloned());
+                    Err(err)
+                }
+            }
+        } else if self.match_token(&TokenType::Number) {
+            match self.previous_cloned().literal {
+                Some(TokenLiteral::Number(x)) => Ok(Expr::Literal(LiteralExpr::Number(x))),
+                _ => {
+                    let err = BaseError::new(ErrorType::ParseError, "expected number")
+                        .with_token(self.previous_cloned());
+                    Err(err)
+                }
+            }
+        } else if self.match_token(&TokenType::LeftParen) {
+            let expr = self.parse_expression()?;
+            // match and consume closing paren
+            if !self.match_token(&TokenType::RightParen) {
+                let err = BaseError::new(ErrorType::ParseError, "expected RightParen")
+                    .with_token(self.peek_owned());
+                Err(err)
+            } else {
+                Ok(Expr::Grouping(GroupingExpr {
+                    expr: Box::new(expr),
+                }))
+            }
+        } else if self.match_token(&TokenType::Identifier) {
+            let t = self.previous_cloned();
+            Ok(Expr::Variable(t))
+        } else {
+            let err = BaseError::new(ErrorType::ParseError, "unexpected token")
+                .with_token(self.peek_owned());
+            Err(err)
+        }
     }
 }
 
@@ -265,7 +331,7 @@ mod test {
 
     use super::*;
 
-    fn parse_to_expression(code: &str) -> Result<Expr, ParseError> {
+    fn parse_to_expression(code: &str) -> Result<Expr, BaseError> {
         let tokens = Scanner::new(code.to_string()).scan().expect("scan failed");
         Parser::new(tokens).parse_expression()
     }
@@ -412,7 +478,7 @@ mod test {
 
     #[test]
     fn test_parse_expression_invalid_grouping() {
-        let ParseError(err_msg) = parse_to_expression("(1 - 1").unwrap_err();
+        let err_msg: String = parse_to_expression("(1 - 1").unwrap_err().into();
         assert!(err_msg.contains("expected RightParen"));
     }
 
@@ -424,7 +490,7 @@ mod test {
         assert!(parse_to_expression("!true == false").is_ok());
     }
 
-    fn parse_to_program(code: &str) -> Result<Program, ParseError> {
+    fn parse_to_program(code: &str) -> Result<Program, ErrorList> {
         let tokens = Scanner::new(code.to_string()).scan().expect("scan failed");
         Parser::new(tokens).parse()
     }

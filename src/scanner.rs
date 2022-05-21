@@ -3,24 +3,16 @@
 /// Look ma, no regex!
 use std::char;
 
+use crate::error::{BaseError, ErrorList, ErrorType};
 use crate::ptypes::PInt;
 use crate::src_loc::SrcLoc;
 use crate::token::{lookup_keyword, Token, TokenLiteral, TokenType};
 
 pub struct Scanner {
     source: Vec<char>,
-    tokens: Vec<Result<Token, ScanError>>,
+    tokens: Vec<Result<Token, BaseError>>,
     start: usize,
     current: usize,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct ScanError(String);
-
-impl ScanError {
-    pub fn new(message: String) -> Self {
-        ScanError(message)
-    }
 }
 
 impl Scanner {
@@ -37,26 +29,26 @@ impl Scanner {
     /// fails.
     ///
     /// Resets the scanner state before returning.
-    pub fn scan(&mut self) -> Result<Vec<Token>, Vec<ScanError>> {
+    pub fn scan(&mut self) -> Result<Vec<Token>, ErrorList> {
         while !self.at_end() {
             self.start = self.current;
             self.scan_token();
         }
 
         self.tokens.push(Ok(Token::eof(self.current)));
-        let ret_tokens: Vec<Result<Token, ScanError>> = std::mem::take(&mut self.tokens);
+        let ret_tokens: Vec<Result<Token, BaseError>> = std::mem::take(&mut self.tokens);
         self.start = 0;
         self.current = 0;
         let mut tokens: Vec<Token> = Vec::new();
-        let mut errs: Vec<ScanError> = Vec::new();
+        let mut errors = ErrorList::default();
         ret_tokens.into_iter().for_each(|val| match val {
             Ok(t) => tokens.push(t),
-            Err(e) => errs.push(e),
+            Err(e) => errors.add(e),
         });
-        if errs.is_empty() {
+        if errors.is_empty() {
             Ok(tokens)
         } else {
-            Err(errs)
+            Err(errors)
         }
     }
 
@@ -118,8 +110,9 @@ impl Scanner {
         }
         if self.at_end() {
             // un-terminated string
-            self.tokens
-                .push(Err(ScanError::new("unterminated string".to_string())));
+            let err = BaseError::new(ErrorType::ScanError, "unterminated string")
+                .with_src_loc(self.current_src_loc());
+            self.tokens.push(Err(err));
             return;
         }
 
@@ -149,7 +142,7 @@ impl Scanner {
 
         let span: String = self.source[self.start..self.current].iter().collect();
         // attempt to parse a PInt
-        let t: Result<Token, ScanError> = match span.parse::<PInt>() {
+        let t: Result<Token, BaseError> = match span.parse::<PInt>() {
             Ok(n) => Ok(Token::new(
                 TokenType::Number,
                 Some(span),
@@ -157,8 +150,8 @@ impl Scanner {
                 self.current_src_loc(),
             )),
             Err(_) => {
-                let msg = format!("failed to parse number from: {}", span);
-                Err(ScanError::new(msg))
+                let msg = format!("failed to parse number from: '{}'", span);
+                Err(BaseError::new(ErrorType::ScanError, &msg).with_src_loc(self.current_src_loc()))
             }
         };
         self.tokens.push(t);
@@ -187,11 +180,9 @@ impl Scanner {
     ///
     /// This is for errors and gradually adding token types
     fn add_unknown_token(&mut self, c: char) {
-        let msg = format!(
-            "unexpected char '{}' starting at offset {}",
-            c, self.current
-        );
-        self.tokens.push(Err(ScanError::new(msg)));
+        let err = BaseError::new(ErrorType::ScanError, &format!("unexpected char '{}'", c,))
+            .with_src_loc(self.current_src_loc());
+        self.tokens.push(Err(err));
     }
 
     /// Return the character at the current source pointer, or None if we're at the end.
@@ -321,8 +312,10 @@ mod test {
     use std::fs;
     use std::io::Read;
 
+    // TODO: test scanner errors
+
     /// Return true if no scan errors were encountered and last token returned is EOF
-    fn scan_helper(path: &str) -> Result<Vec<Token>, Vec<ScanError>> {
+    fn scan_helper(path: &str) -> Result<Vec<Token>, ErrorList> {
         let mut file = fs::File::open(path).expect("failed to open test file");
         let mut content = String::new();
         file.read_to_string(&mut content)
@@ -331,6 +324,10 @@ mod test {
         scanner.scan()
     }
 
+    fn scan_helper_str(content: &str) -> Result<Vec<Token>, ErrorList> {
+        let mut scanner = Scanner::new(content.to_string());
+        scanner.scan()
+    }
     fn contains_token_type(typ: TokenType, tokens: &[Token]) -> bool {
         tokens.iter().any(|t| t.typ == typ)
     }
@@ -389,5 +386,34 @@ mod test {
         assert!(contains_token_type(TokenType::EqualEqual, &toks));
         assert!(contains_token_type(TokenType::Eof, &toks));
         assert!(ends_with_eof(&toks));
+    }
+
+    #[test]
+    fn test_scan_errors() {
+        // test unterminated strings
+        let result = scan_helper_str("var name = \"bob");
+        assert!(result.is_err());
+        let err_msgs: Vec<String> = result.unwrap_err().into_iter().map(|e| e.into()).collect();
+        assert_eq!(err_msgs.len(), 1);
+        assert_eq!(
+            err_msgs[0],
+            "ScanError:chars(11,15):unterminated string".to_string()
+        );
+
+        // test unknown tokens
+        let result = scan_helper_str("var title = %;");
+        assert!(result.is_err());
+        let err_msgs: Vec<String> = result.unwrap_err().into_iter().map(|e| e.into()).collect();
+        assert_eq!(err_msgs.len(), 1);
+        assert_eq!(
+            err_msgs[0],
+            "ScanError:chars(12,13):unexpected char '%'".to_string()
+        );
+
+        // two distinct scan errors
+        let result = scan_helper_str("var title = %; var name = \"bob");
+        assert!(result.is_err());
+        let err_msgs: Vec<String> = result.unwrap_err().into_iter().map(|e| e.into()).collect();
+        assert_eq!(err_msgs.len(), 2);
     }
 }
