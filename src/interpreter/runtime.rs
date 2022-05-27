@@ -102,4 +102,15 @@ impl Environment {
     pub fn define(&mut self, name: String, value: RuntimeValue) {
         self.vars.insert(name, value);
     }
+
+    /// Lookup a value in the runtime environment
+    pub fn get(&self, name: &str, token: &Token) -> Result<RuntimeValue, BaseError> {
+        match self.vars.get(name) {
+            Some(v) => Ok(v.clone()),
+            None => Err(
+                BaseError::new(ErrorType::RuntimeError, "undefined variable")
+                    .with_token(token.to_owned()),
+            ),
+        }
+    }
 }

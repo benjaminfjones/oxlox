@@ -1,12 +1,13 @@
-use super::runtime::{assert_runtime_number, RuntimeValue};
+use super::runtime::{assert_runtime_number, Environment, RuntimeValue};
+use crate::ast::stmt::{Program, Stmt};
 use crate::error::{BaseError, ErrorType};
 
-pub trait Interpreter {
-    fn interpret(&self) -> Result<RuntimeValue, BaseError>;
+pub trait Interpret {
+    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError>;
 }
 
 //
-// Interpreter for Expressions
+// Interpret for Expressions
 //
 
 use crate::{
@@ -14,8 +15,8 @@ use crate::{
     token::TokenType,
 };
 
-impl Interpreter for LiteralExpr {
-    fn interpret(&self) -> Result<RuntimeValue, BaseError> {
+impl Interpret for LiteralExpr {
+    fn interpret(&self, _interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
         Ok(match self {
             LiteralExpr::Bool(b) => RuntimeValue::Bool(*b),
             LiteralExpr::Nil => RuntimeValue::Nil,
@@ -25,12 +26,12 @@ impl Interpreter for LiteralExpr {
     }
 }
 
-impl Interpreter for Expr {
-    fn interpret(&self) -> Result<RuntimeValue, BaseError> {
+impl Interpret for Expr {
+    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
         match self {
             Expr::Binary(be) => {
-                let left_val = be.left.interpret()?;
-                let right_val = be.right.interpret()?;
+                let left_val = be.left.interpret(interpreter)?;
+                let right_val = be.right.interpret(interpreter)?;
                 match &be.operator.typ {
                     // Arithmetic
                     TokenType::Plus => match (left_val, right_val) {
@@ -96,10 +97,10 @@ impl Interpreter for Expr {
                     ),
                 }
             }
-            Expr::Grouping(ge) => ge.interpret(),
-            Expr::Literal(le) => le.interpret(),
+            Expr::Grouping(ge) => ge.interpret(interpreter),
+            Expr::Literal(le) => le.interpret(interpreter),
             Expr::Unary(ue) => {
-                let right_val = ue.right.interpret()?;
+                let right_val = ue.right.interpret(interpreter)?;
                 match &ue.operator.typ {
                     TokenType::Bang => Ok(RuntimeValue::Bool(!right_val.is_truthy())),
                     TokenType::Minus => {
@@ -112,31 +113,105 @@ impl Interpreter for Expr {
                     ),
                 }
             }
-            Expr::Variable(_) => panic!("variable interpretation not implemented!"),
+            Expr::Variable(t) => {
+                let name = t.lexeme.as_ref().unwrap();
+                interpreter.environment.get(name, t)
+            }
         }
     }
 }
 
-impl Interpreter for GroupingExpr {
-    fn interpret(&self) -> Result<RuntimeValue, BaseError> {
-        (*self.expr).interpret()
+impl Interpret for GroupingExpr {
+    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
+        (*self.expr).interpret(interpreter)
+    }
+}
+
+impl Interpret for Stmt {
+    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
+        match self {
+            Stmt::Expr(e) => e.interpret(interpreter),
+            Stmt::Print(e) => {
+                let res = e.interpret(interpreter)?;
+                println!("{}", res);
+                Ok(RuntimeValue::Nil)
+            }
+            Stmt::Var(var_decl) => {
+                let val = match &var_decl.initializer {
+                    Some(e) => e.interpret(interpreter)?,
+                    None => RuntimeValue::Nil,
+                };
+                interpreter
+                    .environment
+                    .define(var_decl.name.to_owned(), val);
+                Ok(RuntimeValue::Nil)
+            }
+        }
+    }
+}
+
+impl Interpret for Program {
+    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
+        let mut result: RuntimeValue = RuntimeValue::Nil;
+        for stmt in self.statements() {
+            result = stmt.interpret(interpreter)?;
+        }
+        Ok(result)
+    }
+}
+
+/// Interpreter state
+///
+/// TODO: represent I/O streams here, improve testing to capture stdout
+#[derive(Default)]
+pub struct Interpreter {
+    environment: Environment,
+}
+
+impl Interpreter {
+    /// Interpret a program, producing side effects and updating interpreter state
+    pub fn interpret(&mut self, program: Program) -> Result<(), BaseError> {
+        match program.interpret(self) {
+            // discard dummy return value
+            Ok(_) => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Get the current interpreter state
+    ///
+    /// Used for testing
+    pub fn get_state(&self) -> &Environment {
+        &self.environment
     }
 }
 
 #[cfg(test)]
 mod test {
     use crate::ptypes::PInt;
+    use crate::token::Token;
     use crate::{parser::Parser, scanner::Scanner};
     use std::convert::Into;
 
     use super::*;
 
-    fn interpret_to_runtime_value(code: &str) -> Result<RuntimeValue, BaseError> {
+    fn interpret_expr_to_runtime_value(code: &str) -> Result<RuntimeValue, BaseError> {
         let tokens = Scanner::new(code.to_string()).scan().expect("scan failed");
         let expr = Parser::new(tokens)
             .parse_expression()
             .expect("unexpected parser error");
-        expr.interpret()
+        let mut interpreter = Interpreter::default();
+        expr.interpret(&mut interpreter)
+    }
+
+    fn interpret_program(code: &str) -> Result<Interpreter, BaseError> {
+        let tokens = Scanner::new(code.to_string()).scan().expect("scan failed");
+        let prg = Parser::new(tokens)
+            .parse()
+            .expect("unexpected parser error");
+        let mut interpreter = Interpreter::default();
+        prg.interpret(&mut interpreter)?;
+        Ok(interpreter)
     }
 
     fn assert_runtime_number(res: Result<RuntimeValue, BaseError>) -> PInt {
@@ -154,48 +229,51 @@ mod test {
     }
     #[test]
     fn test_expr_primitives() {
-        assert_eq!(assert_runtime_number(interpret_to_runtime_value("1")), 1);
-        assert!(assert_runtime_bool(interpret_to_runtime_value("true")));
+        assert_eq!(
+            assert_runtime_number(interpret_expr_to_runtime_value("1")),
+            1
+        );
+        assert!(assert_runtime_bool(interpret_expr_to_runtime_value("true")));
     }
 
     #[test]
     fn test_arithmetic() {
         assert_eq!(
-            assert_runtime_number(interpret_to_runtime_value("1 + 1")),
+            assert_runtime_number(interpret_expr_to_runtime_value("1 + 1")),
             2
         );
         assert_eq!(
-            assert_runtime_number(interpret_to_runtime_value("(1 + 1)")),
+            assert_runtime_number(interpret_expr_to_runtime_value("(1 + 1)")),
             2
         );
         assert_eq!(
-            assert_runtime_number(interpret_to_runtime_value("-(1 + 1)")),
+            assert_runtime_number(interpret_expr_to_runtime_value("-(1 + 1)")),
             -2
         );
         assert_eq!(
-            assert_runtime_number(interpret_to_runtime_value("0 + 1 + 3")),
+            assert_runtime_number(interpret_expr_to_runtime_value("0 + 1 + 3")),
             4
         );
         assert_eq!(
-            assert_runtime_number(interpret_to_runtime_value("(0 + 1) + 3")),
+            assert_runtime_number(interpret_expr_to_runtime_value("(0 + 1) + 3")),
             4
         );
         assert_eq!(
-            assert_runtime_number(interpret_to_runtime_value("(0 - 1) + 3")),
+            assert_runtime_number(interpret_expr_to_runtime_value("(0 - 1) + 3")),
             2
         );
         assert_eq!(
-            assert_runtime_number(interpret_to_runtime_value("0 - 1 + 3")),
+            assert_runtime_number(interpret_expr_to_runtime_value("0 - 1 + 3")),
             2
         );
         // subtraction assocites to the left
         assert_eq!(
-            assert_runtime_number(interpret_to_runtime_value("1 - 1 - 1")),
+            assert_runtime_number(interpret_expr_to_runtime_value("1 - 1 - 1")),
             -1
         );
         // division assocites to the left
         assert_eq!(
-            assert_runtime_number(interpret_to_runtime_value("8 / 2 / 2")),
+            assert_runtime_number(interpret_expr_to_runtime_value("8 / 2 / 2")),
             2
         );
     }
@@ -205,68 +283,90 @@ mod test {
     #[should_panic(expected = "attempt to divide by zero")]
     fn test_div_by_zero() {
         assert_eq!(
-            assert_runtime_number(interpret_to_runtime_value("68 / 0")),
+            assert_runtime_number(interpret_expr_to_runtime_value("68 / 0")),
             0
         );
     }
 
     #[test]
     fn test_equality() {
-        assert!(assert_runtime_bool(interpret_to_runtime_value(
+        assert!(assert_runtime_bool(interpret_expr_to_runtime_value(
             "1 + 1 == 2"
         )));
-        assert!(!assert_runtime_bool(interpret_to_runtime_value(
+        assert!(!assert_runtime_bool(interpret_expr_to_runtime_value(
             "1 + 1 == 3"
         )));
-        assert!(assert_runtime_bool(interpret_to_runtime_value(
+        assert!(assert_runtime_bool(interpret_expr_to_runtime_value(
             "1 + 1 != 3"
         )));
-        assert!(assert_runtime_bool(interpret_to_runtime_value(
+        assert!(assert_runtime_bool(interpret_expr_to_runtime_value(
             "\"1\" == \"1\""
         )));
-        assert!(!assert_runtime_bool(interpret_to_runtime_value(
+        assert!(!assert_runtime_bool(interpret_expr_to_runtime_value(
             "\"foo\" == \"bar\""
         )));
-        assert!(!assert_runtime_bool(interpret_to_runtime_value(
+        assert!(!assert_runtime_bool(interpret_expr_to_runtime_value(
             "true == false"
         )));
-        assert!(assert_runtime_bool(interpret_to_runtime_value(
+        assert!(assert_runtime_bool(interpret_expr_to_runtime_value(
             "!(true == false)"
         )));
-        assert!(!assert_runtime_bool(interpret_to_runtime_value(
+        assert!(!assert_runtime_bool(interpret_expr_to_runtime_value(
             "nil != nil"
         )));
     }
 
     #[test]
     fn test_equality_type_error() {
-        let err: String = interpret_to_runtime_value("1 + true").unwrap_err().into();
+        let err: String = interpret_expr_to_runtime_value("1 + true")
+            .unwrap_err()
+            .into();
         let expected_msg = "RuntimeError:chars(2,3):invalid operand types";
         assert_eq!(err, expected_msg.to_string());
 
         // TODO: make +-/* operand type errors uniform
-        let err: String = interpret_to_runtime_value("1 * true").unwrap_err().into();
+        let err: String = interpret_expr_to_runtime_value("1 * true")
+            .unwrap_err()
+            .into();
         let expected_msg = "RuntimeError:chars(2,3):expected number, got: 'true'";
         assert_eq!(err, expected_msg.to_string());
     }
 
     #[test]
     fn test_comparsion() {
-        assert!(assert_runtime_bool(interpret_to_runtime_value(
+        assert!(assert_runtime_bool(interpret_expr_to_runtime_value(
             "1 + 1 >= 2"
         )));
-        assert!(assert_runtime_bool(interpret_to_runtime_value("1 + 2 > 2")));
-        assert!(!assert_runtime_bool(interpret_to_runtime_value(
+        assert!(assert_runtime_bool(interpret_expr_to_runtime_value(
+            "1 + 2 > 2"
+        )));
+        assert!(!assert_runtime_bool(interpret_expr_to_runtime_value(
             "1 + 1 > 3"
         )));
     }
 
     #[test]
     fn test_comparison_type_error() {
-        let err: String = interpret_to_runtime_value("1 >= \"one\"")
+        let err: String = interpret_expr_to_runtime_value("1 >= \"one\"")
             .unwrap_err()
             .into();
         let expected_msg = "RuntimeError:chars(2,4):comparison type error: invalid operand types";
         assert_eq!(err, expected_msg.to_string());
+    }
+
+    #[test]
+    fn test_interpret_program() {
+        let state = interpret_program("var x = 0; print x;").expect("interpreter failed");
+        assert!(state.environment.get("x", &Token::dummy()).is_ok());
+
+        interpret_program("print \"hello, world!\";").expect("interpreter failed");
+
+        let state = interpret_program("var y = 1; print y + 1;").expect("interpreter failed");
+        assert!(state
+            .environment
+            .get("y", &Token::dummy())
+            .unwrap()
+            .eq_at_token(&RuntimeValue::Number(1), &Token::dummy())
+            .expect("runtime error"));
     }
 }
