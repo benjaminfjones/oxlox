@@ -15,7 +15,9 @@
 ///
 /// Expression grammar, stratified according to precedent and associativity.
 ///
-/// expression     → equality ;
+/// expression     → assignment;
+/// assignment     → IDENTIFIER "=" expression
+///                | equality ;
 /// equality       → comparison ( ( "!=" | "==" ) comparison )* ;
 /// comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 /// term           → factor ( ( "-" | "+" ) factor )* ;
@@ -26,7 +28,7 @@
 ///                | "(" expression ")" ;
 use crate::{
     ast::{
-        expr::{BinaryExpr, Expr, GroupingExpr, LiteralExpr, UnaryExpr},
+        expr::{AssignmentExpr, BinaryExpr, Expr, GroupingExpr, LiteralExpr, UnaryExpr},
         stmt::{Program, Stmt, VarDeclaration},
     },
     error::{BaseError, ErrorList, ErrorType},
@@ -68,6 +70,14 @@ impl Parser {
         &self.tokens[self.current]
     }
 
+    fn peek_next(&self) -> Option<&Token> {
+        if self.current + 1 < self.tokens.len() {
+            Some(&self.tokens[self.current + 1])
+        } else {
+            None
+        }
+    }
+
     fn peek_owned(&self) -> Token {
         self.tokens[self.current].clone()
     }
@@ -98,6 +108,15 @@ impl Parser {
     /// Check that we're not at the EOF token and that the current token matches the given type.
     fn check_token(&self, typ: &TokenType) -> bool {
         !self.at_end() && self.peek().typ == *typ
+    }
+
+    /// Check that the next token (exists and) matches the given type.
+    fn check_next_token(&self, typ: &TokenType) -> bool {
+        if let Some(tt) = self.peek_next() {
+            tt.typ == *typ
+        } else {
+            false
+        }
     }
 
     /// Try to match any of the given token types, if there is a match, consume it and return
@@ -225,7 +244,21 @@ impl Parser {
     }
 
     pub fn parse_expression(&mut self) -> Result<Expr, BaseError> {
-        self.parse_equality()
+        self.parse_assignment()
+    }
+
+    pub fn parse_assignment(&mut self) -> Result<Expr, BaseError> {
+        if self.check_token(&TokenType::Identifier) && self.check_next_token(&TokenType::Equal) {
+            let var_token = self.consume(&TokenType::Identifier)?;
+            self.consume(&TokenType::Equal)?;
+            let value = self.parse_expression()?;
+            Ok(Expr::Assignment(AssignmentExpr {
+                name: var_token,
+                value: Box::new(value),
+            }))
+        } else {
+            self.parse_equality()
+        }
     }
 
     fn parse_binary_association(

@@ -29,6 +29,14 @@ impl Interpret for LiteralExpr {
 impl Interpret for Expr {
     fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
         match self {
+            Expr::Assignment(ae) => {
+                // TODO: assignment to an undefined variable is a runtime error
+                let right_val = ae.value.interpret(interpreter)?;
+                interpreter
+                    .environment
+                    .define(ae.name.lexeme.as_ref().unwrap().clone(), right_val.clone());
+                Ok(right_val)
+            }
             Expr::Binary(be) => {
                 let left_val = be.left.interpret(interpreter)?;
                 let right_val = be.right.interpret(interpreter)?;
@@ -355,7 +363,7 @@ mod test {
     }
 
     #[test]
-    fn test_interpret_program() {
+    fn test_interpret_basic_program() {
         let state = interpret_program("var x = 0; print x;").expect("interpreter failed");
         assert!(state.environment.get("x", &Token::dummy()).is_ok());
 
@@ -368,8 +376,17 @@ mod test {
             .unwrap()
             .eq_at_token(&RuntimeValue::Number(1), &Token::dummy())
             .expect("runtime error"));
+    }
 
-        // TODO: add an environment assertion once assignment is supported
-        interpret_program("var x = 1; var y = 2; print x + y;").expect("interpreter failed");
+    #[test]
+    fn test_interpret_assignment_program() {
+        let state = interpret_program("var x = 1; var y = 2; var z = 0; z = x + y;")
+            .expect("interpreter failed");
+        assert!(state
+            .environment
+            .get("z", &Token::dummy())
+            .unwrap()
+            .eq_at_token(&RuntimeValue::Number(3), &Token::dummy())
+            .expect("runtime error"));
     }
 }

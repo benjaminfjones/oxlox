@@ -5,11 +5,19 @@ use crate::{ptypes::PInt, token::Token};
 /// Top level expression type
 #[derive(Clone, Debug)]
 pub enum Expr {
+    Assignment(AssignmentExpr),
     Binary(BinaryExpr),
     Grouping(GroupingExpr),
     Literal(LiteralExpr),
     Unary(UnaryExpr),
     Variable(Token),
+}
+
+/// Variable assignment expression
+#[derive(Clone, Debug)]
+pub struct AssignmentExpr {
+    pub name: Token,
+    pub value: Box<Expr>,
 }
 
 /// The application of a binary operation to two expressions.
@@ -71,9 +79,11 @@ pub struct UnaryExpr {
     pub right: Box<Expr>,
 }
 
+// For some reason we format Exprs as if they were s-expressions
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Expr::Assignment(e) => write!(f, "(= {} {})", e.name, e.value),
             Expr::Binary(e) => write!(f, "({} {} {})", e.operator, e.left, e.right),
             Expr::Grouping(e) => write!(f, "(grouping {})", e.expr),
             Expr::Literal(e) => write!(f, "{}", e),
