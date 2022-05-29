@@ -368,5 +368,8 @@ mod test {
             .unwrap()
             .eq_at_token(&RuntimeValue::Number(1), &Token::dummy())
             .expect("runtime error"));
+
+        // TODO: add an environment assertion once assignment is supported
+        interpret_program("var x = 1; var y = 2; print x + y;").expect("interpreter failed");
     }
 }
