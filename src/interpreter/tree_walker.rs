@@ -397,4 +397,16 @@ mod test {
         .expect("interpreter failed");
         assert!(assert_state(state, "z", &RuntimeValue::Number(3)));
     }
+
+    #[test]
+    fn test_interpret_assignment_expr() {
+        let state = interpret_program(
+            "var x = 1;
+             var y = 2;
+             var z;
+             var w = (z = x + y);",
+        )
+        .expect("interpreter failed");
+        assert!(assert_state(state, "w", &RuntimeValue::Number(3)));
+    }
 }
