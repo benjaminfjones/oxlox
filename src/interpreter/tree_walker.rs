@@ -362,6 +362,15 @@ mod test {
         assert_eq!(err, expected_msg.to_string());
     }
 
+    fn assert_state(state: Interpreter, var: &str, value: &RuntimeValue) -> bool {
+        state
+            .environment
+            .get(var, &Token::dummy())
+            .unwrap()
+            .eq_at_token(value, &Token::dummy())
+            .expect("runtime error")
+    }
+
     #[test]
     fn test_interpret_basic_program() {
         let state = interpret_program("var x = 0; print x;").expect("interpreter failed");
@@ -369,24 +378,23 @@ mod test {
 
         interpret_program("print \"hello, world!\";").expect("interpreter failed");
 
-        let state = interpret_program("var y = 1; print y + 1;").expect("interpreter failed");
-        assert!(state
-            .environment
-            .get("y", &Token::dummy())
-            .unwrap()
-            .eq_at_token(&RuntimeValue::Number(1), &Token::dummy())
-            .expect("runtime error"));
+        let state = interpret_program(
+            "var y = 1;
+             print y + 1;",
+        )
+        .expect("interpreter failed");
+        assert!(assert_state(state, "y", &RuntimeValue::Number(1)));
     }
 
     #[test]
     fn test_interpret_assignment_program() {
-        let state = interpret_program("var x = 1; var y = 2; var z = 0; z = x + y;")
-            .expect("interpreter failed");
-        assert!(state
-            .environment
-            .get("z", &Token::dummy())
-            .unwrap()
-            .eq_at_token(&RuntimeValue::Number(3), &Token::dummy())
-            .expect("runtime error"));
+        let state = interpret_program(
+            "var x = 1;
+             var y = 2;
+             var z = 68;
+             z = x + y;",
+        )
+        .expect("interpreter failed");
+        assert!(assert_state(state, "z", &RuntimeValue::Number(3)));
     }
 }
