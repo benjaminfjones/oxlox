@@ -451,6 +451,20 @@ mod test {
     }
 
     #[test]
+    fn test_interpret_block_scope_shadowing_with_reference() {
+        let state = interpret_program(
+            "var result;
+             var x = 1;
+             {
+               var x = x + 1; // redefine but also ref x form outer scope
+               result = x;
+             }",
+        )
+        .expect("interpreter failed");
+        assert_state(state, "result", &RuntimeValue::Number(2));
+    }
+
+    #[test]
     fn test_interpret_block_scope_triple_print() {
         interpret_program(
             "var a = \"global a\";
