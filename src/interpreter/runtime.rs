@@ -93,24 +93,70 @@ pub fn assert_runtime_number(val: RuntimeValue, token: &Token) -> Result<PInt, B
 }
 
 /// Runtime environment for the tree walking interpreter
-#[derive(Default)]
+///
+/// The environment is represented using a stack of variable mappings. The first element of
+/// the stack is the global environment, the last is the most local scope's environment.
 pub struct Environment {
-    vars: HashMap<String, RuntimeValue>,
+    stack: Vec<HashMap<String, RuntimeValue>>,
+}
+
+impl Default for Environment {
+    /// Default environment stack consists of an empty global envionment.
+    fn default() -> Self {
+        Environment {
+            stack: vec![HashMap::new()],
+        }
+    }
 }
 
 impl Environment {
-    pub fn define(&mut self, name: String, value: RuntimeValue) {
-        self.vars.insert(name, value);
+    /// Push a new local envionment
+    pub fn push(&mut self) {
+        self.stack.push(HashMap::new());
     }
 
-    /// Lookup a value in the runtime environment
-    pub fn get(&self, name: &str, token: &Token) -> Result<RuntimeValue, BaseError> {
-        match self.vars.get(name) {
-            Some(v) => Ok(v.clone()),
-            None => Err(
-                BaseError::new(ErrorType::RuntimeError, "undefined variable")
-                    .with_token(token.to_owned()),
-            ),
+    /// Pop the local-most envionment
+    pub fn pop(&mut self) {
+        self.stack.pop();
+    }
+
+    /// Define and assign to a name in the local-most scope
+    pub fn define(&mut self, name: String, value: RuntimeValue) {
+        self.stack.last_mut().unwrap().insert(name, value);
+    }
+
+    /// Assign to a name
+    pub fn assign(
+        &mut self,
+        name: &str,
+        value: RuntimeValue,
+        token: &Token,
+    ) -> Result<(), BaseError> {
+        // iterate over the environment stack from local to global
+        for vars in self.stack.iter_mut().rev() {
+            if let Some(_v) = vars.get(name) {
+                vars.insert(name.to_owned(), value);
+                return Ok(());
+            }
         }
+        Err(BaseError::new(
+            ErrorType::RuntimeError,
+            "assignment to an undefined variable",
+        )
+        .with_token(token.to_owned()))
+    }
+
+    /// Lookup a value in the runtime environment, starting with the most local environment
+    /// and descending down towards the global environment.
+    pub fn get(&self, name: &str, token: &Token) -> Result<RuntimeValue, BaseError> {
+        for vars in self.stack.iter().rev() {
+            if let Some(v) = vars.get(name) {
+                return Ok(v.clone());
+            }
+        }
+        Err(
+            BaseError::new(ErrorType::RuntimeError, "undefined variable")
+                .with_token(token.to_owned()),
+        )
     }
 }

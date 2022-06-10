@@ -7,12 +7,18 @@ pub struct VarDeclaration {
     pub initializer: Option<Box<Expr>>,
 }
 
+#[derive(Debug)]
+pub struct Block {
+    pub statements: Vec<Stmt>,
+}
+
 /// Top level statement
 #[derive(Debug)]
 pub enum Stmt {
     Var(VarDeclaration),
     Print(Box<Expr>),
     Expr(Box<Expr>),
+    Block(Block),
 }
 
 #[derive(Debug)]

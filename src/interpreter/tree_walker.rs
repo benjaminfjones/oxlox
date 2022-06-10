@@ -30,11 +30,12 @@ impl Interpret for Expr {
     fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
         match self {
             Expr::Assignment(ae) => {
-                // TODO: assignment to an undefined variable is a runtime error
                 let right_val = ae.value.interpret(interpreter)?;
-                interpreter
-                    .environment
-                    .define(ae.name.lexeme.as_ref().unwrap().clone(), right_val.clone());
+                interpreter.environment.assign(
+                    ae.name.lexeme.as_ref().unwrap(),
+                    right_val.clone(),
+                    &ae.name,
+                )?;
                 Ok(right_val)
             }
             Expr::Binary(be) => {
@@ -154,6 +155,15 @@ impl Interpret for Stmt {
                     .define(var_decl.name.to_owned(), val);
                 Ok(RuntimeValue::Nil)
             }
+            Stmt::Block(block) => {
+                interpreter.push_env();
+                let mut result: RuntimeValue = RuntimeValue::Nil;
+                for stmt in block.statements.iter() {
+                    result = stmt.interpret(interpreter)?;
+                }
+                interpreter.pop_env();
+                Ok(result)
+            }
         }
     }
 }
@@ -184,6 +194,14 @@ impl Interpreter {
             Ok(_) => Ok(()),
             Err(e) => Err(e),
         }
+    }
+
+    pub fn push_env(&mut self) {
+        self.environment.push();
+    }
+
+    pub fn pop_env(&mut self) {
+        self.environment.pop();
     }
 
     /// Get the current interpreter state
@@ -408,5 +426,57 @@ mod test {
         )
         .expect("interpreter failed");
         assert!(assert_state(state, "w", &RuntimeValue::Number(3)));
+    }
+
+    #[test]
+    fn test_interpret_block_scope() {
+        let state = interpret_program(
+            "var result = 0;
+             var global = 1;
+             {
+               var local = 2;
+               result = global + local;
+             }",
+        )
+        .expect("interpreter failed");
+        assert!(assert_state(state, "result", &RuntimeValue::Number(3)));
+    }
+
+    #[test]
+    fn test_interpret_block_scope_shadowing() {
+        let state = interpret_program(
+            "var x = 38;
+             { var x = 64;
+               { var x = 128; }
+             }",
+        )
+        .expect("interpreter failed");
+        assert!(assert_state(state, "x", &RuntimeValue::Number(38)));
+    }
+
+    #[test]
+    fn test_interpret_block_scope_triple_print() {
+        interpret_program(
+            "var a = \"global a\";
+             var b = \"global b\";
+             var c = \"global c\";
+             {
+               var a = \"outer a\";
+               var b = \"outer b\";
+               {
+                 var a = \"inner a\";
+                 print a;
+                 print b;
+                 print c;
+               }
+               print a;
+               print b;
+               print c;
+             }
+             print a;
+             print b;
+             print c;",
+        )
+        .expect("interpreter failed");
     }
 }

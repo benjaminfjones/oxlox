@@ -11,7 +11,9 @@
 /// declaration    → "var" IDENTIFIER ("=" expression) ";"
 ///                | statement ;
 /// statement      → "print" expression ";"
-///                | expression ";" ;
+///                | expression ";"
+///                | block ;
+/// block          > "{" declaration* "}" ;
 ///
 /// Expression grammar, stratified according to precedent and associativity.
 ///
@@ -29,7 +31,7 @@
 use crate::{
     ast::{
         expr::{AssignmentExpr, BinaryExpr, Expr, GroupingExpr, LiteralExpr, UnaryExpr},
-        stmt::{Program, Stmt, VarDeclaration},
+        stmt::{Block, Program, Stmt, VarDeclaration},
     },
     error::{BaseError, ErrorList, ErrorType},
     token::{Token, TokenLiteral, TokenType},
@@ -233,10 +235,21 @@ impl Parser {
 
     fn parse_statement(&mut self) -> Result<Stmt, BaseError> {
         if self.match_token(&TokenType::Print) {
+            // Case: print statement
             let expr = self.parse_expression()?;
             self.consume(&TokenType::Semicolon)?;
             Ok(Stmt::Print(Box::new(expr)))
+        } else if self.match_token(&TokenType::LeftBrace) {
+            // Case: new lexical block
+            let mut statements = Vec::new();
+            while !self.check_token(&TokenType::RightBrace) && !self.at_end() {
+                let decl = self.parse_declaration()?;
+                statements.push(decl);
+            }
+            self.consume(&TokenType::RightBrace)?;
+            Ok(Stmt::Block(Block { statements }))
         } else {
+            // Case: expression statement
             let expr = self.parse_expression()?;
             self.consume(&TokenType::Semicolon)?;
             Ok(Stmt::Expr(Box::new(expr)))
@@ -247,6 +260,7 @@ impl Parser {
         self.parse_assignment()
     }
 
+    // TODO: parse_assignment should handle complex assignment targets like x.y = ...
     pub fn parse_assignment(&mut self) -> Result<Expr, BaseError> {
         if self.check_token(&TokenType::Identifier) && self.check_next_token(&TokenType::Equal) {
             let var_token = self.consume(&TokenType::Identifier)?;
