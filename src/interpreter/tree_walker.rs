@@ -164,6 +164,16 @@ impl Interpret for Stmt {
                 interpreter.pop_env();
                 Ok(result)
             }
+            Stmt::IfStmt(ite) => {
+                let eval_condition = ite.condition.interpret(interpreter)?;
+                let mut result = RuntimeValue::Nil;
+                if eval_condition.is_truthy() {
+                    result = ite.then_stmt.interpret(interpreter)?;
+                } else if let Some(else_stmt) = ite.else_stmt.as_ref() {
+                    result = else_stmt.interpret(interpreter)?;
+                }
+                Ok(result)
+            }
         }
     }
 }
@@ -380,7 +390,7 @@ mod test {
         assert_eq!(err, expected_msg.to_string());
     }
 
-    fn assert_state(state: Interpreter, var: &str, value: &RuntimeValue) {
+    fn assert_state(state: &Interpreter, var: &str, value: &RuntimeValue) {
         let state_val = state.environment.get(var, &Token::dummy()).unwrap();
         assert_eq!(&state_val, value);
     }
@@ -397,7 +407,7 @@ mod test {
              print y + 1;",
         )
         .expect("interpreter failed");
-        assert_state(state, "y", &RuntimeValue::Number(1));
+        assert_state(&state, "y", &RuntimeValue::Number(1));
     }
 
     #[test]
@@ -409,7 +419,7 @@ mod test {
              z = x + y;",
         )
         .expect("interpreter failed");
-        assert_state(state, "z", &RuntimeValue::Number(3));
+        assert_state(&state, "z", &RuntimeValue::Number(3));
     }
 
     #[test]
@@ -421,7 +431,7 @@ mod test {
              var w = (z = x + y);",
         )
         .expect("interpreter failed");
-        assert_state(state, "w", &RuntimeValue::Number(3));
+        assert_state(&state, "w", &RuntimeValue::Number(3));
     }
 
     #[test]
@@ -435,7 +445,7 @@ mod test {
              }",
         )
         .expect("interpreter failed");
-        assert_state(state, "result", &RuntimeValue::Number(3));
+        assert_state(&state, "result", &RuntimeValue::Number(3));
     }
 
     #[test]
@@ -447,7 +457,7 @@ mod test {
              }",
         )
         .expect("interpreter failed");
-        assert_state(state, "x", &RuntimeValue::Number(38));
+        assert_state(&state, "x", &RuntimeValue::Number(38));
     }
 
     #[test]
@@ -461,7 +471,7 @@ mod test {
              }",
         )
         .expect("interpreter failed");
-        assert_state(state, "result", &RuntimeValue::Number(2));
+        assert_state(&state, "result", &RuntimeValue::Number(2));
     }
 
     #[test]
@@ -488,5 +498,19 @@ mod test {
              print c;",
         )
         .expect("interpreter failed");
+    }
+
+    #[test]
+    fn test_interpret_ite() {
+        let state = interpret_program(
+            "var c = true;
+             var result1;
+             var result2;
+             if (c) result1 = 1; else result1 = 0;
+             if (!c) result2 = 1; else result2 = 0;",
+        )
+        .expect("interpreter failed");
+        assert_state(&state, "result1", &RuntimeValue::Number(1));
+        assert_state(&state, "result2", &RuntimeValue::Number(0));
     }
 }

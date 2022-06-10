@@ -1,15 +1,25 @@
 /// This module contains representations for the Program, Declaration, and Statement AST types.
 use crate::ast::expr::Expr;
 
+/// Variable declaration statement
 #[derive(Debug)]
 pub struct VarDeclaration {
     pub name: String,
     pub initializer: Option<Box<Expr>>,
 }
 
+/// Lexically scoped block statement
 #[derive(Debug)]
 pub struct Block {
     pub statements: Vec<Stmt>,
+}
+
+/// If-then-else statement
+#[derive(Debug)]
+pub struct IfStmt {
+    pub condition: Box<Expr>,
+    pub then_stmt: Box<Stmt>,
+    pub else_stmt: Option<Box<Stmt>>,
 }
 
 /// Top level statement
@@ -19,6 +29,7 @@ pub enum Stmt {
     Print(Box<Expr>),
     Expr(Box<Expr>),
     Block(Block),
+    IfStmt(IfStmt),
 }
 
 #[derive(Debug)]

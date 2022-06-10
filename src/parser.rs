@@ -13,7 +13,10 @@
 /// statement      → "print" expression ";"
 ///                | expression ";"
 ///                | block ;
-/// block          > "{" declaration* "}" ;
+///                | ifStmt ;
+/// block          → "{" declaration* "}" ;
+/// ifStmt         → "if" "(" expression ")" statement
+///                  ( "else" statement )? ;
 ///
 /// Expression grammar, stratified according to precedent and associativity.
 ///
@@ -31,7 +34,7 @@
 use crate::{
     ast::{
         expr::{AssignmentExpr, BinaryExpr, Expr, GroupingExpr, LiteralExpr, UnaryExpr},
-        stmt::{Block, Program, Stmt, VarDeclaration},
+        stmt::{Block, IfStmt, Program, Stmt, VarDeclaration},
     },
     error::{BaseError, ErrorList, ErrorType},
     token::{Token, TokenLiteral, TokenType},
@@ -248,6 +251,24 @@ impl Parser {
             }
             self.consume(&TokenType::RightBrace)?;
             Ok(Stmt::Block(Block { statements }))
+        } else if self.match_token(&TokenType::If) {
+            // Case: if-then-else
+            self.consume(&TokenType::LeftParen)?;
+            let condition = self.parse_expression()?;
+            self.consume(&TokenType::RightParen)?;
+            let then_stmt = self.parse_statement()?;
+
+            let else_stmt = if self.match_token(&TokenType::Else) {
+                let e = self.parse_statement()?;
+                Some(Box::new(e))
+            } else {
+                None
+            };
+            Ok(Stmt::IfStmt(IfStmt {
+                condition: Box::new(condition),
+                then_stmt: Box::new(then_stmt),
+                else_stmt,
+            }))
         } else {
             // Case: expression statement
             let expr = self.parse_expression()?;
