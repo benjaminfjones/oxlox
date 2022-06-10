@@ -380,13 +380,9 @@ mod test {
         assert_eq!(err, expected_msg.to_string());
     }
 
-    fn assert_state(state: Interpreter, var: &str, value: &RuntimeValue) -> bool {
-        state
-            .environment
-            .get(var, &Token::dummy())
-            .unwrap()
-            .eq_at_token(value, &Token::dummy())
-            .expect("runtime error")
+    fn assert_state(state: Interpreter, var: &str, value: &RuntimeValue) {
+        let state_val = state.environment.get(var, &Token::dummy()).unwrap();
+        assert_eq!(&state_val, value);
     }
 
     #[test]
@@ -401,7 +397,7 @@ mod test {
              print y + 1;",
         )
         .expect("interpreter failed");
-        assert!(assert_state(state, "y", &RuntimeValue::Number(1)));
+        assert_state(state, "y", &RuntimeValue::Number(1));
     }
 
     #[test]
@@ -413,7 +409,7 @@ mod test {
              z = x + y;",
         )
         .expect("interpreter failed");
-        assert!(assert_state(state, "z", &RuntimeValue::Number(3)));
+        assert_state(state, "z", &RuntimeValue::Number(3));
     }
 
     #[test]
@@ -425,7 +421,7 @@ mod test {
              var w = (z = x + y);",
         )
         .expect("interpreter failed");
-        assert!(assert_state(state, "w", &RuntimeValue::Number(3)));
+        assert_state(state, "w", &RuntimeValue::Number(3));
     }
 
     #[test]
@@ -439,7 +435,7 @@ mod test {
              }",
         )
         .expect("interpreter failed");
-        assert!(assert_state(state, "result", &RuntimeValue::Number(3)));
+        assert_state(state, "result", &RuntimeValue::Number(3));
     }
 
     #[test]
@@ -451,7 +447,7 @@ mod test {
              }",
         )
         .expect("interpreter failed");
-        assert!(assert_state(state, "x", &RuntimeValue::Number(38)));
+        assert_state(state, "x", &RuntimeValue::Number(38));
     }
 
     #[test]
