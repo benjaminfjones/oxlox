@@ -22,6 +22,13 @@ pub struct IfStmt {
     pub else_stmt: Option<Box<Stmt>>,
 }
 
+/// If-then-else statement
+#[derive(Debug)]
+pub struct WhileStmt {
+    pub condition: Box<Expr>,
+    pub body: Box<Stmt>,
+}
+
 /// Top level statement
 #[derive(Debug)]
 pub enum Stmt {
@@ -30,6 +37,7 @@ pub enum Stmt {
     Expr(Box<Expr>),
     Block(Block),
     IfStmt(IfStmt),
+    While(WhileStmt),
 }
 
 #[derive(Debug)]

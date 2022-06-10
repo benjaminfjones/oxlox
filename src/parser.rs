@@ -12,11 +12,13 @@
 ///                | statement ;
 /// statement      → "print" expression ";"
 ///                | expression ";"
-///                | block ;
-///                | ifStmt ;
+///                | block
+///                | ifStmt
+///                | whileStmt ;
 /// block          → "{" declaration* "}" ;
 /// ifStmt         → "if" "(" expression ")" statement
 ///                  ( "else" statement )? ;
+/// whileStmt      → "while" "(" expression ")" statement ;
 ///
 /// Expression grammar, stratified according to precedent and associativity.
 ///
@@ -38,7 +40,7 @@ use crate::{
         expr::{
             AssignmentExpr, BinaryExpr, Expr, GroupingExpr, LiteralExpr, LogicalExpr, UnaryExpr,
         },
-        stmt::{Block, IfStmt, Program, Stmt, VarDeclaration},
+        stmt::{Block, IfStmt, Program, Stmt, VarDeclaration, WhileStmt},
     },
     error::{BaseError, ErrorList, ErrorType},
     token::{Token, TokenLiteral, TokenType},
@@ -274,6 +276,16 @@ impl Parser {
                 condition: Box::new(condition),
                 then_stmt: Box::new(then_stmt),
                 else_stmt,
+            }))
+        } else if self.match_token(&TokenType::While) {
+            // Case: while loop
+            self.consume(&TokenType::LeftParen)?;
+            let condition = self.parse_expression()?;
+            self.consume(&TokenType::RightParen)?;
+            let body = self.parse_statement()?;
+            Ok(Stmt::While(WhileStmt {
+                condition: Box::new(condition),
+                body: Box::new(body),
             }))
         } else {
             // Case: expression statement

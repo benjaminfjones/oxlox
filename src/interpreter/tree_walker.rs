@@ -117,12 +117,14 @@ impl Interpret for Expr {
                         let b = left_val.ge_at_token(&right_val, &be.operator)?;
                         Ok(RuntimeValue::Bool(b))
                     }
+                    // left < right <=> !(left >= right)
                     TokenType::Less => {
-                        let b = left_val.gt_at_token(&right_val, &be.operator)?;
+                        let b = left_val.ge_at_token(&right_val, &be.operator)?;
                         Ok(RuntimeValue::Bool(!b))
                     }
+                    // left <= right <=> !(left > right)
                     TokenType::LessEqual => {
-                        let b = left_val.ge_at_token(&right_val, &be.operator)?;
+                        let b = left_val.gt_at_token(&right_val, &be.operator)?;
                         Ok(RuntimeValue::Bool(!b))
                     }
 
@@ -198,6 +200,15 @@ impl Interpret for Stmt {
                     result = ite.then_stmt.interpret(interpreter)?;
                 } else if let Some(else_stmt) = ite.else_stmt.as_ref() {
                     result = else_stmt.interpret(interpreter)?;
+                }
+                Ok(result)
+            }
+            Stmt::While(wh) => {
+                let mut eval_condition = wh.condition.interpret(interpreter)?;
+                let mut result = RuntimeValue::Nil;
+                while eval_condition.is_truthy() {
+                    result = wh.body.interpret(interpreter)?;
+                    eval_condition = wh.condition.interpret(interpreter)?;
                 }
                 Ok(result)
             }
@@ -564,5 +575,22 @@ mod test {
         assert_state(&state, "r4", &RuntimeValue::Number(4));
         assert_state(&state, "r6", &RuntimeValue::Number(6));
         assert_state(&state, "r7", &RuntimeValue::Number(7));
+    }
+
+    #[test]
+    fn test_interpret_while() {
+        let state = interpret_program(
+            "var n = 0;
+             var c1 = 0;
+             while (n < 10) { c1 = c1 + 2; n = n + 1; }
+             // n == 10
+             var c2 = 0;
+             while (n > 0) { c2 = c2 + 3; n = n - 1; }
+            ",
+        )
+        .expect("interpreter failed");
+        assert_state(&state, "c1", &RuntimeValue::Number(20));
+        assert_state(&state, "c2", &RuntimeValue::Number(30));
+        assert_state(&state, "n", &RuntimeValue::Number(0));
     }
 }
