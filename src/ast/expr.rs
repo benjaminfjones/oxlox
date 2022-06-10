@@ -9,6 +9,7 @@ pub enum Expr {
     Binary(BinaryExpr),
     Grouping(GroupingExpr),
     Literal(LiteralExpr),
+    Logical(LogicalExpr),
     Unary(UnaryExpr),
     Variable(Token),
 }
@@ -44,6 +45,25 @@ pub struct BinaryExpr {
     pub left: Box<Expr>,
     pub operator: Token,
     pub right: Box<Expr>,
+}
+
+#[derive(Clone, Debug)]
+pub struct LogicalExpr {
+    pub left: Box<Expr>,
+    pub operator: Token,
+    pub right: Box<Expr>,
+}
+
+impl fmt::Display for LogicalExpr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "({} {} {})",
+            self.left,
+            self.operator.lexeme.as_ref().unwrap(),
+            self.right
+        )
+    }
 }
 
 /// A parenthesized expression
@@ -87,6 +107,7 @@ impl fmt::Display for Expr {
             Expr::Binary(e) => write!(f, "({} {} {})", e.operator, e.left, e.right),
             Expr::Grouping(e) => write!(f, "(grouping {})", e.expr),
             Expr::Literal(e) => write!(f, "{}", e),
+            Expr::Logical(e) => write!(f, "{}", e),
             Expr::Unary(e) => write!(f, "({} {})", e.operator, e.right),
             Expr::Variable(t) => write!(f, "{}", t.lexeme.as_ref().unwrap()),
         }

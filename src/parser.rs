@@ -22,7 +22,9 @@
 ///
 /// expression     → assignment;
 /// assignment     → IDENTIFIER "=" expression
-///                | equality ;
+///                | logic_or ;
+/// logic_or       > logic_and ( "or" logic_and )* ;
+/// logic_and      > equality ( "and" equality )* ;
 /// equality       → comparison ( ( "!=" | "==" ) comparison )* ;
 /// comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 /// term           → factor ( ( "-" | "+" ) factor )* ;
@@ -33,7 +35,9 @@
 ///                | "(" expression ")" ;
 use crate::{
     ast::{
-        expr::{AssignmentExpr, BinaryExpr, Expr, GroupingExpr, LiteralExpr, UnaryExpr},
+        expr::{
+            AssignmentExpr, BinaryExpr, Expr, GroupingExpr, LiteralExpr, LogicalExpr, UnaryExpr,
+        },
         stmt::{Block, IfStmt, Program, Stmt, VarDeclaration},
     },
     error::{BaseError, ErrorList, ErrorType},
@@ -49,6 +53,8 @@ const COMPARISON_OPERATORS: [TokenType; 4] = [
 ];
 const TERM_OPERATORS: [TokenType; 2] = [TokenType::Plus, TokenType::Minus];
 const FACTOR_OPERATORS: [TokenType; 2] = [TokenType::Star, TokenType::Slash];
+const LOGICAL_OR_OPERATORS: [TokenType; 1] = [TokenType::Or];
+const LOGICAL_AND_OPERATORS: [TokenType; 1] = [TokenType::And];
 const UNARY_OPERATORS: [TokenType; 2] = [TokenType::Bang, TokenType::Minus];
 
 pub struct Parser {
@@ -292,7 +298,7 @@ impl Parser {
                 value: Box::new(value),
             }))
         } else {
-            self.parse_equality()
+            self.parse_logical_or()
         }
     }
 
@@ -314,6 +320,35 @@ impl Parser {
         }
 
         Ok(expr)
+    }
+
+    // TODO: Reduce code duplication with parse_binary_association
+    fn parse_logical_association(
+        &mut self,
+        operators: &[TokenType],
+        operand_parser: fn(&mut Self) -> Result<Expr, BaseError>,
+    ) -> Result<Expr, BaseError> {
+        let mut expr: Expr = operand_parser(self)?;
+
+        while self.match_any_token(operators) {
+            let operator = self.previous_cloned();
+            let right = operand_parser(self)?;
+            expr = Expr::Logical(LogicalExpr {
+                left: Box::new(expr),
+                operator,
+                right: Box::new(right),
+            });
+        }
+
+        Ok(expr)
+    }
+
+    pub fn parse_logical_or(&mut self) -> Result<Expr, BaseError> {
+        self.parse_logical_association(&LOGICAL_OR_OPERATORS, Parser::parse_logical_and)
+    }
+
+    pub fn parse_logical_and(&mut self) -> Result<Expr, BaseError> {
+        self.parse_logical_association(&LOGICAL_AND_OPERATORS, Parser::parse_equality)
     }
 
     pub fn parse_equality(&mut self) -> Result<Expr, BaseError> {

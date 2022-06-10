@@ -11,7 +11,7 @@ pub trait Interpret {
 //
 
 use crate::{
-    ast::expr::{Expr, GroupingExpr, LiteralExpr},
+    ast::expr::{Expr, GroupingExpr, LiteralExpr, LogicalExpr},
     token::TokenType,
 };
 
@@ -23,6 +23,32 @@ impl Interpret for LiteralExpr {
             LiteralExpr::Number(x) => RuntimeValue::Number(*x),
             LiteralExpr::String(s) => RuntimeValue::String(s.clone()),
         })
+    }
+}
+
+impl Interpret for LogicalExpr {
+    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
+        let left_val = self.left.interpret(interpreter)?;
+        match &self.operator.typ {
+            TokenType::Or => {
+                if left_val.is_truthy() {
+                    Ok(RuntimeValue::Bool(true))
+                } else {
+                    self.right.interpret(interpreter)
+                }
+            }
+            TokenType::And => {
+                if left_val.is_truthy() {
+                    self.right.interpret(interpreter)
+                } else {
+                    Ok(RuntimeValue::Bool(false))
+                }
+            }
+            _ => Err(
+                BaseError::new(ErrorType::RuntimeError, "unexpected logical operator")
+                    .with_token(self.operator.to_owned()),
+            ),
+        }
     }
 }
 
@@ -42,7 +68,7 @@ impl Interpret for Expr {
                 let left_val = be.left.interpret(interpreter)?;
                 let right_val = be.right.interpret(interpreter)?;
                 match &be.operator.typ {
-                    // Arithmetic
+                    // Arithmetic, overloaded for Number and String
                     TokenType::Plus => match (left_val, right_val) {
                         (RuntimeValue::Number(x), RuntimeValue::Number(y)) => {
                             Ok(RuntimeValue::Number(x + y))
@@ -108,6 +134,7 @@ impl Interpret for Expr {
             }
             Expr::Grouping(ge) => ge.interpret(interpreter),
             Expr::Literal(le) => le.interpret(interpreter),
+            Expr::Logical(le) => le.interpret(interpreter),
             Expr::Unary(ue) => {
                 let right_val = ue.right.interpret(interpreter)?;
                 match &ue.operator.typ {
@@ -507,10 +534,35 @@ mod test {
              var result1;
              var result2;
              if (c) result1 = 1; else result1 = 0;
-             if (!c) result2 = 1; else result2 = 0;",
+             if (!c) result2 = 0; else result2 = 2;",
         )
         .expect("interpreter failed");
         assert_state(&state, "result1", &RuntimeValue::Number(1));
-        assert_state(&state, "result2", &RuntimeValue::Number(0));
+        assert_state(&state, "result2", &RuntimeValue::Number(2));
+    }
+
+    #[test]
+    fn test_interpret_logical_ite() {
+        let state = interpret_program(
+            "var a = true; var b = false;
+             var r1; var r2; var r3; var r4; var r5;
+             if (a or b) r1 = 1; else r1 = 0;
+             if (a and b) r2 = 0; else r2 = 2;
+             if (b or a) r3 = 3; else r3 = 0;
+             if (b and a) r4 = 0; else r4 = 4;
+             if (b or (a or b)) r5 = 5; else r5 = 0;
+
+             var x = 1; var y = 2;
+             var r6; var r7;
+             if (x == y or (x + 1 == y)) r6 = 6; else r6 = 0;
+             if (x == y - 1 and (x == y or x == x)) r7 = 7; else r7 = 0;",
+        )
+        .expect("interpreter failed");
+        assert_state(&state, "r1", &RuntimeValue::Number(1));
+        assert_state(&state, "r2", &RuntimeValue::Number(2));
+        assert_state(&state, "r3", &RuntimeValue::Number(3));
+        assert_state(&state, "r4", &RuntimeValue::Number(4));
+        assert_state(&state, "r6", &RuntimeValue::Number(6));
+        assert_state(&state, "r7", &RuntimeValue::Number(7));
     }
 }
