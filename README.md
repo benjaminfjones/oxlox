@@ -2,8 +2,6 @@
 
 A Lox interpreter.
 
-Code written while reading and practising with https://craftinginterpreters.com/
-
 There are several places where this implementation diverges from the reference
 implementations `jlox`, and `clox`. I'm documenting these as I go...
 
@@ -15,6 +13,9 @@ implementations `jlox`, and `clox`. I'm documenting these as I go...
   revisit this decision later)
 * uses idiomatic rust return value based error handling generally,
   instead of exceptions.
+* oxlox doesn't implement classes, inheritance, etc..
+
+Code written while reading and practising with https://craftinginterpreters.com/
 
 ## Development
 
@@ -27,6 +28,9 @@ Currently developing with Rust 1.60.0.
 info: syncing channel updates for 'stable-aarch64-apple-darwin'
 info: latest update on 2022-04-07, rust version 1.60.0 (7737e0b5c 2022-04-04)
 ```
+
+`oxlox` depends only on the Rust stdlib, no 3rd party crates. `oxlox` obeys
+clippy. Clippy is life.
 
 ### Setting up pre-commit
 
