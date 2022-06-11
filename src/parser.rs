@@ -8,17 +8,22 @@
 /// to parse the next valid declaration.
 ///
 /// program        → (declaration)* EOF
-/// declaration    → "var" IDENTIFIER ("=" expression) ";"
+/// declaration    → varDecl
 ///                | statement ;
+/// varDecl        → "var" IDENTIFIER ("=" expression) ";"
 /// statement      → "print" expression ";"
 ///                | expression ";"
 ///                | block
+///                | forStmt
 ///                | ifStmt
 ///                | whileStmt ;
 /// block          → "{" declaration* "}" ;
 /// ifStmt         → "if" "(" expression ")" statement
 ///                  ( "else" statement )? ;
 /// whileStmt      → "while" "(" expression ")" statement ;
+/// forStmt        → "for" "(" varDecl | expression | ";" )
+///                  expression? ";"
+///                  expression? ")" statement
 ///
 /// Expression grammar, stratified according to precedent and associativity.
 ///
@@ -230,18 +235,23 @@ impl Parser {
 
     fn parse_declaration(&mut self) -> Result<Stmt, BaseError> {
         if self.match_token(&TokenType::Var) {
-            let id = self.consume(&TokenType::Identifier)?;
-            let name = id.lexeme.as_ref().unwrap().to_string();
-            let initializer = if self.match_token(&TokenType::Equal) {
-                Some(Box::new(self.parse_expression()?))
-            } else {
-                None
-            };
+            let vd = self.parse_var_declaration()?;
             self.consume(&TokenType::Semicolon)?;
-            Ok(Stmt::Var(VarDeclaration { name, initializer }))
+            Ok(vd)
         } else {
             self.parse_statement()
         }
+    }
+
+    fn parse_var_declaration(&mut self) -> Result<Stmt, BaseError> {
+        let id = self.consume(&TokenType::Identifier)?;
+        let name = id.lexeme.as_ref().unwrap().to_string();
+        let initializer = if self.match_token(&TokenType::Equal) {
+            Some(Box::new(self.parse_expression()?))
+        } else {
+            None
+        };
+        Ok(Stmt::Var(VarDeclaration { name, initializer }))
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, BaseError> {
@@ -287,12 +297,75 @@ impl Parser {
                 condition: Box::new(condition),
                 body: Box::new(body),
             }))
+        } else if self.match_token(&TokenType::For) {
+            self.parse_for_statement()
         } else {
             // Case: expression statement
-            let expr = self.parse_expression()?;
-            self.consume(&TokenType::Semicolon)?;
-            Ok(Stmt::Expr(Box::new(expr)))
+            self.parse_expr_statement()
         }
+    }
+
+    fn parse_expr_statement(&mut self) -> Result<Stmt, BaseError> {
+        let expr = self.parse_expression()?;
+        self.consume(&TokenType::Semicolon)?;
+        Ok(Stmt::Expr(Box::new(expr)))
+    }
+
+    /// Parse a for loop and desuger into a while loop
+    pub fn parse_for_statement(&mut self) -> Result<Stmt, BaseError> {
+        self.consume(&TokenType::LeftParen)?;
+
+        let initializer = if self.match_token(&TokenType::Semicolon) {
+            None
+        } else if self.match_token(&TokenType::Var) {
+            let vd = self.parse_var_declaration()?;
+            self.consume(&TokenType::Semicolon)?;
+            Some(vd)
+        } else {
+            let es = self.parse_expr_statement()?;
+            self.consume(&TokenType::Semicolon)?;
+            Some(es)
+        };
+
+        let condition = if self.match_token(&TokenType::Semicolon) {
+            None
+        } else {
+            let e = self.parse_expression()?;
+            self.consume(&TokenType::Semicolon)?;
+            Some(e)
+        };
+
+        let increment = if self.check_token(&TokenType::RightParen) {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+
+        self.consume(&TokenType::RightParen)?;
+        let mut body = self.parse_statement()?;
+
+        // *append* the increment statement to the orignial body
+        if let Some(inc_expr) = increment {
+            let inc_stmt = Stmt::Expr(Box::new(inc_expr));
+            body = Stmt::Block(Block {
+                statements: vec![body, inc_stmt],
+            });
+        }
+
+        // wrap body with a while loop (infinte if condition is None)
+        body = Stmt::While(WhileStmt {
+            condition: Box::new(condition.unwrap_or(Expr::Literal(LiteralExpr::Bool(true)))),
+            body: Box::new(body),
+        });
+
+        // *prepend* the optional initializer
+        if let Some(init_stmt) = initializer {
+            body = Stmt::Block(Block {
+                statements: vec![init_stmt, body],
+            });
+        }
+
+        Ok(body)
     }
 
     pub fn parse_expression(&mut self) -> Result<Expr, BaseError> {
