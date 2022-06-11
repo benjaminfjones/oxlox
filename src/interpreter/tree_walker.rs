@@ -263,7 +263,6 @@ impl Interpreter {
 #[cfg(test)]
 mod test {
     use crate::ptypes::PInt;
-    use crate::token::Token;
     use crate::{parser::Parser, scanner::Scanner};
     use std::convert::Into;
 
@@ -276,16 +275,6 @@ mod test {
             .expect("unexpected parser error");
         let mut interpreter = Interpreter::default();
         expr.interpret(&mut interpreter)
-    }
-
-    fn interpret_program(code: &str) -> Result<Interpreter, BaseError> {
-        let tokens = Scanner::new(code.to_string()).scan().expect("scan failed");
-        let prg = Parser::new(tokens)
-            .parse()
-            .expect("unexpected parser error");
-        let mut interpreter = Interpreter::default();
-        prg.interpret(&mut interpreter)?;
-        Ok(interpreter)
     }
 
     fn assert_runtime_number(res: Result<RuntimeValue, BaseError>) -> PInt {
@@ -426,171 +415,5 @@ mod test {
             .into();
         let expected_msg = "RuntimeError:chars(2,4):comparison type error: invalid operand types";
         assert_eq!(err, expected_msg.to_string());
-    }
-
-    fn assert_state(state: &Interpreter, var: &str, value: &RuntimeValue) {
-        let state_val = state.environment.get(var, &Token::dummy()).unwrap();
-        assert_eq!(&state_val, value);
-    }
-
-    #[test]
-    fn test_interpret_basic_program() {
-        let state = interpret_program("var x = 0; print x;").expect("interpreter failed");
-        assert!(state.environment.get("x", &Token::dummy()).is_ok());
-
-        interpret_program("print \"hello, world!\";").expect("interpreter failed");
-
-        let state = interpret_program(
-            "var y = 1;
-             print y + 1;",
-        )
-        .expect("interpreter failed");
-        assert_state(&state, "y", &RuntimeValue::Number(1));
-    }
-
-    #[test]
-    fn test_interpret_assignment_program() {
-        let state = interpret_program(
-            "var x = 1;
-             var y = 2;
-             var z = 68;
-             z = x + y;",
-        )
-        .expect("interpreter failed");
-        assert_state(&state, "z", &RuntimeValue::Number(3));
-    }
-
-    #[test]
-    fn test_interpret_assignment_expr() {
-        let state = interpret_program(
-            "var x = 1;
-             var y = 2;
-             var z;
-             var w = (z = x + y);",
-        )
-        .expect("interpreter failed");
-        assert_state(&state, "w", &RuntimeValue::Number(3));
-    }
-
-    #[test]
-    fn test_interpret_block_scope() {
-        let state = interpret_program(
-            "var result = 0;
-             var global = 1;
-             {
-               var local = 2;
-               result = global + local;
-             }",
-        )
-        .expect("interpreter failed");
-        assert_state(&state, "result", &RuntimeValue::Number(3));
-    }
-
-    #[test]
-    fn test_interpret_block_scope_shadowing() {
-        let state = interpret_program(
-            "var x = 38;
-             { var x = 64;
-               { var x = 128; }
-             }",
-        )
-        .expect("interpreter failed");
-        assert_state(&state, "x", &RuntimeValue::Number(38));
-    }
-
-    #[test]
-    fn test_interpret_block_scope_shadowing_with_reference() {
-        let state = interpret_program(
-            "var result;
-             var x = 1;
-             {
-               var x = x + 1; // redefine but also ref x form outer scope
-               result = x;
-             }",
-        )
-        .expect("interpreter failed");
-        assert_state(&state, "result", &RuntimeValue::Number(2));
-    }
-
-    #[test]
-    fn test_interpret_block_scope_triple_print() {
-        interpret_program(
-            "var a = \"global a\";
-             var b = \"global b\";
-             var c = \"global c\";
-             {
-               var a = \"outer a\";
-               var b = \"outer b\";
-               {
-                 var a = \"inner a\";
-                 print a;
-                 print b;
-                 print c;
-               }
-               print a;
-               print b;
-               print c;
-             }
-             print a;
-             print b;
-             print c;",
-        )
-        .expect("interpreter failed");
-    }
-
-    #[test]
-    fn test_interpret_ite() {
-        let state = interpret_program(
-            "var c = true;
-             var result1;
-             var result2;
-             if (c) result1 = 1; else result1 = 0;
-             if (!c) result2 = 0; else result2 = 2;",
-        )
-        .expect("interpreter failed");
-        assert_state(&state, "result1", &RuntimeValue::Number(1));
-        assert_state(&state, "result2", &RuntimeValue::Number(2));
-    }
-
-    #[test]
-    fn test_interpret_logical_ite() {
-        let state = interpret_program(
-            "var a = true; var b = false;
-             var r1; var r2; var r3; var r4; var r5;
-             if (a or b) r1 = 1; else r1 = 0;
-             if (a and b) r2 = 0; else r2 = 2;
-             if (b or a) r3 = 3; else r3 = 0;
-             if (b and a) r4 = 0; else r4 = 4;
-             if (b or (a or b)) r5 = 5; else r5 = 0;
-
-             var x = 1; var y = 2;
-             var r6; var r7;
-             if (x == y or (x + 1 == y)) r6 = 6; else r6 = 0;
-             if (x == y - 1 and (x == y or x == x)) r7 = 7; else r7 = 0;",
-        )
-        .expect("interpreter failed");
-        assert_state(&state, "r1", &RuntimeValue::Number(1));
-        assert_state(&state, "r2", &RuntimeValue::Number(2));
-        assert_state(&state, "r3", &RuntimeValue::Number(3));
-        assert_state(&state, "r4", &RuntimeValue::Number(4));
-        assert_state(&state, "r6", &RuntimeValue::Number(6));
-        assert_state(&state, "r7", &RuntimeValue::Number(7));
-    }
-
-    #[test]
-    fn test_interpret_while() {
-        let state = interpret_program(
-            "var n = 0;
-             var c1 = 0;
-             while (n < 10) { c1 = c1 + 2; n = n + 1; }
-             // n == 10
-             var c2 = 0;
-             while (n > 0) { c2 = c2 + 3; n = n - 1; }
-            ",
-        )
-        .expect("interpreter failed");
-        assert_state(&state, "c1", &RuntimeValue::Number(20));
-        assert_state(&state, "c2", &RuntimeValue::Number(30));
-        assert_state(&state, "n", &RuntimeValue::Number(0));
     }
 }
