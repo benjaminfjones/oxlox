@@ -11,6 +11,8 @@ use crate::{
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RuntimeValue {
     Bool(bool),
+    // name, arity, implementation
+    Callable(String, usize, fn(Vec<RuntimeValue>) -> RuntimeValue),
     Nil,
     Number(PInt),
     String(String),
@@ -20,6 +22,7 @@ impl fmt::Display for RuntimeValue {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             RuntimeValue::Bool(b) => write!(f, "{}", b),
+            RuntimeValue::Callable(name, _arity, _fn) => write!(f, "<function {}>", &name),
             RuntimeValue::Nil => write!(f, "nil"),
             RuntimeValue::Number(x) => write!(f, "{}", x),
             RuntimeValue::String(s) => write!(f, "{}", &s),
@@ -77,6 +80,31 @@ impl RuntimeValue {
             RuntimeValue::Bool(b) => *b,
             RuntimeValue::Nil => false,
             _ => true,
+        }
+    }
+
+    /// Arity of a runtime value.
+    ///
+    /// For most values, arity is defined to be 0. For Callables it is the number of expected
+    /// arguments.
+    pub fn arity(&self) -> usize {
+        match self {
+            RuntimeValue::Callable(_name, arity, _fn) => *arity,
+            _ => 0,
+        }
+    }
+
+    //
+    // Subset of methods only defined for Callable
+    //
+
+    pub fn call(&self, arguments: Vec<Self>) -> Result<Self, BaseError> {
+        match self {
+            RuntimeValue::Callable(_name, _arity, f) => Ok(f(arguments)),
+            _ => Err(BaseError::new(
+                ErrorType::RuntimeError,
+                "cannot call non-callable runtime value",
+            )),
         }
     }
 }

@@ -37,13 +37,16 @@
 /// term           → factor ( ( "-" | "+" ) factor )* ;
 /// factor         → unary ( ( "/" | "*" ) unary )* ;
 /// unary          → ( "!" | "-" ) unary
-///                | primary ;
+///                | call ;
+/// call           > primary ( "(" arguments? ")" )* ;
+/// arguments      > expression ( "," expression )* ;
 /// primary        → NUMBER | STRING | "true" | "false" | "nil"
 ///                | "(" expression ")" ;
 use crate::{
     ast::{
         expr::{
-            AssignmentExpr, BinaryExpr, Expr, GroupingExpr, LiteralExpr, LogicalExpr, UnaryExpr,
+            AssignmentExpr, BinaryExpr, CallExpr, Expr, GroupingExpr, LiteralExpr, LogicalExpr,
+            UnaryExpr,
         },
         stmt::{Block, IfStmt, Program, Stmt, VarDeclaration, WhileStmt},
     },
@@ -63,6 +66,9 @@ const FACTOR_OPERATORS: [TokenType; 2] = [TokenType::Star, TokenType::Slash];
 const LOGICAL_OR_OPERATORS: [TokenType; 1] = [TokenType::Or];
 const LOGICAL_AND_OPERATORS: [TokenType; 1] = [TokenType::And];
 const UNARY_OPERATORS: [TokenType; 2] = [TokenType::Bang, TokenType::Minus];
+
+/// Maximum number of function call arguments allowed
+const MAX_ARGUMENTS: usize = 255;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -428,31 +434,31 @@ impl Parser {
         Ok(expr)
     }
 
-    pub fn parse_logical_or(&mut self) -> Result<Expr, BaseError> {
+    fn parse_logical_or(&mut self) -> Result<Expr, BaseError> {
         self.parse_logical_association(&LOGICAL_OR_OPERATORS, Parser::parse_logical_and)
     }
 
-    pub fn parse_logical_and(&mut self) -> Result<Expr, BaseError> {
+    fn parse_logical_and(&mut self) -> Result<Expr, BaseError> {
         self.parse_logical_association(&LOGICAL_AND_OPERATORS, Parser::parse_equality)
     }
 
-    pub fn parse_equality(&mut self) -> Result<Expr, BaseError> {
+    fn parse_equality(&mut self) -> Result<Expr, BaseError> {
         self.parse_binary_association(&EQUALITY_OPERATORS, Parser::parse_comparison)
     }
 
-    pub fn parse_comparison(&mut self) -> Result<Expr, BaseError> {
+    fn parse_comparison(&mut self) -> Result<Expr, BaseError> {
         self.parse_binary_association(&COMPARISON_OPERATORS, Parser::parse_term)
     }
 
-    pub fn parse_term(&mut self) -> Result<Expr, BaseError> {
+    fn parse_term(&mut self) -> Result<Expr, BaseError> {
         self.parse_binary_association(&TERM_OPERATORS, Parser::parse_factor)
     }
 
-    pub fn parse_factor(&mut self) -> Result<Expr, BaseError> {
+    fn parse_factor(&mut self) -> Result<Expr, BaseError> {
         self.parse_binary_association(&FACTOR_OPERATORS, Parser::parse_unary)
     }
 
-    pub fn parse_unary(&mut self) -> Result<Expr, BaseError> {
+    fn parse_unary(&mut self) -> Result<Expr, BaseError> {
         if self.match_any_token(&UNARY_OPERATORS) {
             let operator = self.previous_cloned();
             let expr = self.parse_unary()?;
@@ -461,11 +467,49 @@ impl Parser {
                 right: Box::new(expr),
             }))
         } else {
-            self.parse_primary()
+            self.parse_call()
         }
     }
 
-    pub fn parse_primary(&mut self) -> Result<Expr, BaseError> {
+    fn parse_call(&mut self) -> Result<Expr, BaseError> {
+        let mut expr = self.parse_primary()?;
+        loop {
+            if self.match_token(&TokenType::LeftParen) {
+                expr = self.parse_finish_call(expr)?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_finish_call(&mut self, callee_expr: Expr) -> Result<Expr, BaseError> {
+        let mut arguments = Vec::new();
+        if !self.check_token(&TokenType::RightParen) {
+            loop {
+                if arguments.len() >= MAX_ARGUMENTS {
+                    let err_msg = format!("Can't have more than {} arguments", MAX_ARGUMENTS);
+                    return Err(BaseError::new(ErrorType::ParseError, &err_msg)
+                        .with_token(self.previous_cloned()));
+                }
+                let arg = self.parse_expression()?;
+                arguments.push(arg);
+                if !self.match_token(&TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+
+        let rparen = self.consume(&TokenType::RightParen)?;
+        Ok(Expr::Call(CallExpr {
+            callee: Box::new(callee_expr),
+            paren: rparen,
+            arguments,
+        }))
+    }
+
+    fn parse_primary(&mut self) -> Result<Expr, BaseError> {
         if self.match_token(&TokenType::False) {
             Ok(Expr::Literal(LiteralExpr::Bool(false)))
         } else if self.match_token(&TokenType::True) {

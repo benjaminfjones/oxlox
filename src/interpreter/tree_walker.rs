@@ -134,6 +134,31 @@ impl Interpret for Expr {
                     ),
                 }
             }
+            Expr::Call(ce) => {
+                // Evaluate the callee experession. If this is not a Callable variant, we return a
+                // RuntimeError at callee.call()
+                let callee = ce.callee.interpret(interpreter)?;
+
+                // Evaluate the arguments in order
+                let mut arguments: Vec<RuntimeValue> = Vec::new();
+                for arg in ce.arguments.iter() {
+                    let evaled_arg = arg.interpret(interpreter)?;
+                    arguments.push(evaled_arg);
+                }
+
+                // Check the callee's arity
+                if arguments.len() != callee.arity() {
+                    let err_msg = format!(
+                        "expected {} arguments, but got {}",
+                        callee.arity(),
+                        arguments.len()
+                    );
+                    Err(BaseError::new(ErrorType::RuntimeError, &err_msg)
+                        .with_token(ce.paren.clone()))
+                } else {
+                    Ok(callee.call(arguments)?)
+                }
+            }
             Expr::Grouping(ge) => ge.interpret(interpreter),
             Expr::Literal(le) => le.interpret(interpreter),
             Expr::Logical(le) => le.interpret(interpreter),
