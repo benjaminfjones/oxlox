@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::thread;
+use std::time::{Duration, SystemTime};
 
 use crate::{
     error::{BaseError, ErrorType},
@@ -129,15 +131,21 @@ pub struct Environment {
 }
 
 impl Default for Environment {
-    /// Default environment stack consists of an empty global envionment.
+    /// Default environment stack consists of built-in global functions at the top/bottom of
+    /// the stack.
     fn default() -> Self {
         Environment {
-            stack: vec![HashMap::new()],
+            stack: vec![define_globals()],
         }
     }
 }
 
 impl Environment {
+    /// Create a new environment stack with builtin globals at the bottom
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Push a new local envionment
     pub fn push(&mut self) {
         self.stack.push(HashMap::new());
@@ -187,4 +195,51 @@ impl Environment {
                 .with_token(token.to_owned()),
         )
     }
+}
+
+//
+// Global builtin functions
+//
+
+fn define_globals() -> HashMap<String, RuntimeValue> {
+    let mut globals = HashMap::new();
+
+    globals.insert(
+        "clock".to_string(),
+        RuntimeValue::Callable("clock".to_string(), 0, builtin_clock),
+    );
+    globals.insert(
+        "sleep".to_string(),
+        RuntimeValue::Callable("sleep".to_string(), 1, builtin_sleep),
+    );
+
+    globals
+}
+
+/// Return the current system clock time in number of milliseconds since UNIX_EPOCH
+///
+/// Note: This builtin will panic if the Rust stdlib fails to measure time since UNIX_EPOCH (very
+/// unlikely), or if the number of milliseconds exceeds max i64.
+fn builtin_clock(_arguments: Vec<RuntimeValue>) -> RuntimeValue {
+    let since_epoc: Duration = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("critical error: failed to measure system time");
+    RuntimeValue::Number(since_epoc.as_millis() as i64)
+}
+
+/// Sleep for the given number of milliseconds
+///
+/// arguments:
+///   duration (type: Number): Number of milliseconds to sleep
+///
+/// return: Nil
+///
+/// TODO: support returning a RuntimeError
+fn builtin_sleep(arguments: Vec<RuntimeValue>) -> RuntimeValue {
+    let duration = match arguments[0] {
+        RuntimeValue::Number(d) => Duration::from_millis(d as u64),
+        _ => panic!("type error: expected Number, got {}", arguments[0]),
+    };
+    thread::sleep(duration);
+    RuntimeValue::Nil
 }

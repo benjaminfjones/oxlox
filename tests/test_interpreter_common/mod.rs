@@ -18,3 +18,11 @@ pub fn assert_state(state: &Interpreter, var: &str, value: &RuntimeValue) {
     let state_val = state.get_state().get(var, &Token::dummy()).unwrap();
     assert_eq!(&state_val, value);
 }
+
+pub fn assert_state_predicate<F>(state: &Interpreter, var: &str, pred: F)
+where
+    F: Fn(&RuntimeValue) -> bool,
+{
+    let state_val = state.get_state().get(var, &Token::dummy()).unwrap();
+    assert!(pred(&state_val));
+}
