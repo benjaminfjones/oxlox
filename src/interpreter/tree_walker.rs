@@ -1,4 +1,6 @@
-use super::runtime::{assert_runtime_number, Environment, RuntimeValue};
+use super::runtime::{
+    assert_runtime_number, Environment, RuntimeCallable, RuntimeDeclaredFn, RuntimeValue,
+};
 use crate::ast::stmt::{Program, Stmt};
 use crate::error::{BaseError, ErrorType};
 
@@ -199,6 +201,15 @@ impl Interpret for Stmt {
                 println!("{}", res);
                 Ok(RuntimeValue::Nil)
             }
+            Stmt::Fun(fd) => {
+                interpreter.environment.define(
+                    fd.name.lexeme.as_ref().unwrap().to_string(),
+                    RuntimeValue::Callable(RuntimeCallable::DeclaredFn(RuntimeDeclaredFn {
+                        declaration: fd.clone(),
+                    })),
+                );
+                Ok(RuntimeValue::Nil)
+            }
             Stmt::Var(var_decl) => {
                 let val = match &var_decl.initializer {
                     Some(e) => e.interpret(interpreter)?,
@@ -282,6 +293,10 @@ impl Interpreter {
     /// Used for testing
     pub fn get_state(&self) -> &Environment {
         &self.environment
+    }
+
+    pub fn get_state_mut(&mut self) -> &mut Environment {
+        &mut self.environment
     }
 }
 

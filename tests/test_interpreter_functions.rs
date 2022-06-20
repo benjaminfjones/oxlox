@@ -21,3 +21,21 @@ fn test_interpret_call_clock_and_sleep() {
     });
     assert_state(&state, "result3", &RuntimeValue::Bool(true));
 }
+
+#[test]
+fn test_interpret_call_user_function() {
+    interpret_program(
+        "fun print_succ(n) {
+            print n + 1;
+         }
+         print \"succ(1) = \";
+         var result = print_succ(1);",
+    )
+    .expect("interpreter failed");
+    // TODO: when we support return statements, make this a return value assertion
+}
+
+// TODO: test recursion
+// TODO: test nested function declaration
+// TODO: test runtime errors during declared function exec
+// TODO: test runtime errors during builtin function exec

@@ -8,8 +8,12 @@
 /// to parse the next valid declaration.
 ///
 /// program        → (declaration)* EOF
-/// declaration    → varDecl
+/// declaration    → funDecl
+///                | varDecl
 ///                | statement ;
+/// funDecl        → "fun" function ;
+/// function       → IDENTIFIER "(" parameters? ")" block ;
+/// parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
 /// varDecl        → "var" IDENTIFIER ("=" expression) ";"
 /// statement      → "print" expression ";"
 ///                | expression ";"
@@ -30,16 +34,16 @@
 /// expression     → assignment;
 /// assignment     → IDENTIFIER "=" expression
 ///                | logic_or ;
-/// logic_or       > logic_and ( "or" logic_and )* ;
-/// logic_and      > equality ( "and" equality )* ;
+/// logic_or       → logic_and ( "or" logic_and )* ;
+/// logic_and      → equality ( "and" equality )* ;
 /// equality       → comparison ( ( "!=" | "==" ) comparison )* ;
 /// comparison     → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 /// term           → factor ( ( "-" | "+" ) factor )* ;
 /// factor         → unary ( ( "/" | "*" ) unary )* ;
 /// unary          → ( "!" | "-" ) unary
 ///                | call ;
-/// call           > primary ( "(" arguments? ")" )* ;
-/// arguments      > expression ( "," expression )* ;
+/// call           → primary ( "(" arguments? ")" )* ;
+/// arguments      → expression ( "," expression )* ;
 /// primary        → NUMBER | STRING | "true" | "false" | "nil"
 ///                | "(" expression ")" ;
 use crate::{
@@ -48,7 +52,7 @@ use crate::{
             AssignmentExpr, BinaryExpr, CallExpr, Expr, GroupingExpr, LiteralExpr, LogicalExpr,
             UnaryExpr,
         },
-        stmt::{Block, IfStmt, Program, Stmt, VarDeclaration, WhileStmt},
+        stmt::{Block, FunDeclaration, IfStmt, Program, Stmt, VarDeclaration, WhileStmt},
     },
     error::{BaseError, ErrorList, ErrorType},
     token::{Token, TokenLiteral, TokenType},
@@ -240,12 +244,55 @@ impl Parser {
     }
 
     fn parse_declaration(&mut self) -> Result<Stmt, BaseError> {
-        if self.match_token(&TokenType::Var) {
+        if self.match_token(&TokenType::Fun) {
+            let fd = self.parse_fun_declaration()?;
+            Ok(fd)
+        } else if self.match_token(&TokenType::Var) {
             let vd = self.parse_var_declaration()?;
             self.consume(&TokenType::Semicolon)?;
             Ok(vd)
         } else {
             self.parse_statement()
+        }
+    }
+
+    fn parse_fun_declaration(&mut self) -> Result<Stmt, BaseError> {
+        let name = self.consume(&TokenType::Identifier)?;
+
+        self.consume(&TokenType::LeftParen)?;
+
+        let mut parameters = Vec::new();
+        if !self.check_token(&TokenType::RightParen) {
+            loop {
+                if parameters.len() >= MAX_ARGUMENTS {
+                    return Err(BaseError::new(
+                        ErrorType::ParseError,
+                        "cannot specify more than {} function parameters",
+                    )
+                    .with_token(self.previous_cloned()));
+                }
+                parameters.push(self.consume(&TokenType::Identifier)?);
+                if !self.match_token(&TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        let rparen = self.consume(&TokenType::RightParen)?;
+        let arity = parameters.len();
+
+        let body_stmt = self.parse_statement()?;
+        if let Stmt::Block(_) = body_stmt {
+            Ok(Stmt::Fun(FunDeclaration {
+                name,
+                parameters,
+                arity,
+                body: Box::new(body_stmt),
+            }))
+        } else {
+            Err(
+                BaseError::new(ErrorType::ParseError, "expected statement block")
+                    .with_token(rparen),
+            )
         }
     }
 
