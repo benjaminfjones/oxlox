@@ -11,44 +11,38 @@ pub struct FunDeclaration {
     pub body: Box<Stmt>, // always a Block
 }
 
-/// Variable declaration statement
-#[derive(Clone, Debug)]
-pub struct VarDeclaration {
-    pub name: String,
-    pub initializer: Option<Box<Expr>>,
-}
-
-/// Lexically scoped block statement
 #[derive(Clone, Debug)]
 pub struct Block {
     pub statements: Vec<Stmt>,
 }
 
-/// If-then-else statement
-#[derive(Clone, Debug)]
-pub struct IfStmt {
-    pub condition: Box<Expr>,
-    pub then_stmt: Box<Stmt>,
-    pub else_stmt: Option<Box<Stmt>>,
-}
-
-/// If-then-else statement
-#[derive(Clone, Debug)]
-pub struct WhileStmt {
-    pub condition: Box<Expr>,
-    pub body: Box<Stmt>,
-}
-
 /// Top level statement
 #[derive(Clone, Debug)]
 pub enum Stmt {
-    Block(Block),
+    /// Lexically scoped block statement
+    Block(Vec<Stmt>),
+    /// Expression statement, e.g. function call
     Expr(Box<Expr>),
+    /// Function declaration statement
     Fun(FunDeclaration),
-    IfStmt(IfStmt),
+    /// If-then-else statement
+    IfStmt {
+        condition: Box<Expr>,
+        then_stmt: Box<Stmt>,
+        else_stmt: Option<Box<Stmt>>,
+    },
+    /// Builtin print statement
     Print(Box<Expr>),
-    Var(VarDeclaration),
-    While(WhileStmt),
+    /// Variable declaration statement
+    Var {
+        name: String,
+        initializer: Option<Box<Expr>>,
+    },
+    /// While loop statement
+    While {
+        condition: Box<Expr>,
+        body: Box<Stmt>,
+    },
 }
 
 #[derive(Clone, Debug)]

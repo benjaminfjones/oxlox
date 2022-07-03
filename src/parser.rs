@@ -52,7 +52,7 @@ use crate::{
             AssignmentExpr, BinaryExpr, CallExpr, Expr, GroupingExpr, LiteralExpr, LogicalExpr,
             UnaryExpr,
         },
-        stmt::{Block, FunDeclaration, IfStmt, Program, Stmt, VarDeclaration, WhileStmt},
+        stmt::{FunDeclaration, Program, Stmt},
     },
     error::{BaseError, ErrorList, ErrorType},
     token::{Token, TokenLiteral, TokenType},
@@ -304,7 +304,7 @@ impl Parser {
         } else {
             None
         };
-        Ok(Stmt::Var(VarDeclaration { name, initializer }))
+        Ok(Stmt::Var { name, initializer })
     }
 
     fn parse_statement(&mut self) -> Result<Stmt, BaseError> {
@@ -321,7 +321,7 @@ impl Parser {
                 statements.push(decl);
             }
             self.consume(&TokenType::RightBrace)?;
-            Ok(Stmt::Block(Block { statements }))
+            Ok(Stmt::Block(statements))
         } else if self.match_token(&TokenType::If) {
             // Case: if-then-else
             self.consume(&TokenType::LeftParen)?;
@@ -335,21 +335,21 @@ impl Parser {
             } else {
                 None
             };
-            Ok(Stmt::IfStmt(IfStmt {
+            Ok(Stmt::IfStmt {
                 condition: Box::new(condition),
                 then_stmt: Box::new(then_stmt),
                 else_stmt,
-            }))
+            })
         } else if self.match_token(&TokenType::While) {
             // Case: while loop
             self.consume(&TokenType::LeftParen)?;
             let condition = self.parse_expression()?;
             self.consume(&TokenType::RightParen)?;
             let body = self.parse_statement()?;
-            Ok(Stmt::While(WhileStmt {
+            Ok(Stmt::While {
                 condition: Box::new(condition),
                 body: Box::new(body),
-            }))
+            })
         } else if self.match_token(&TokenType::For) {
             self.parse_for_statement()
         } else {
@@ -400,22 +400,18 @@ impl Parser {
         // *append* the increment statement to the orignial body
         if let Some(inc_expr) = increment {
             let inc_stmt = Stmt::Expr(Box::new(inc_expr));
-            body = Stmt::Block(Block {
-                statements: vec![body, inc_stmt],
-            });
+            body = Stmt::Block(vec![body, inc_stmt]);
         }
 
         // wrap body with a while loop (infinte if condition is None)
-        body = Stmt::While(WhileStmt {
+        body = Stmt::While {
             condition: Box::new(condition.unwrap_or(Expr::Literal(LiteralExpr::Bool(true)))),
             body: Box::new(body),
-        });
+        };
 
         // *prepend* the optional initializer
         if let Some(init_stmt) = initializer {
-            body = Stmt::Block(Block {
-                statements: vec![init_stmt, body],
-            });
+            body = Stmt::Block(vec![init_stmt, body]);
         }
 
         Ok(body)

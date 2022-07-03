@@ -210,41 +210,43 @@ impl Interpret for Stmt {
                 );
                 Ok(RuntimeValue::Nil)
             }
-            Stmt::Var(var_decl) => {
-                let val = match &var_decl.initializer {
+            Stmt::Var { name, initializer } => {
+                let val = match initializer {
                     Some(e) => e.interpret(interpreter)?,
                     None => RuntimeValue::Nil,
                 };
-                interpreter
-                    .environment
-                    .define(var_decl.name.to_owned(), val);
+                interpreter.environment.define(name.to_owned(), val);
                 Ok(RuntimeValue::Nil)
             }
-            Stmt::Block(block) => {
+            Stmt::Block(statements) => {
                 interpreter.push_env();
                 let mut result: RuntimeValue = RuntimeValue::Nil;
-                for stmt in block.statements.iter() {
+                for stmt in statements.iter() {
                     result = stmt.interpret(interpreter)?;
                 }
                 interpreter.pop_env();
                 Ok(result)
             }
-            Stmt::IfStmt(ite) => {
-                let eval_condition = ite.condition.interpret(interpreter)?;
+            Stmt::IfStmt {
+                condition,
+                then_stmt,
+                else_stmt,
+            } => {
+                let eval_condition = condition.interpret(interpreter)?;
                 let mut result = RuntimeValue::Nil;
                 if eval_condition.is_truthy() {
-                    result = ite.then_stmt.interpret(interpreter)?;
-                } else if let Some(else_stmt) = ite.else_stmt.as_ref() {
+                    result = then_stmt.interpret(interpreter)?;
+                } else if let Some(else_stmt) = else_stmt.as_ref() {
                     result = else_stmt.interpret(interpreter)?;
                 }
                 Ok(result)
             }
-            Stmt::While(wh) => {
-                let mut eval_condition = wh.condition.interpret(interpreter)?;
+            Stmt::While { condition, body } => {
+                let mut eval_condition = condition.interpret(interpreter)?;
                 let mut result = RuntimeValue::Nil;
                 while eval_condition.is_truthy() {
-                    result = wh.body.interpret(interpreter)?;
-                    eval_condition = wh.condition.interpret(interpreter)?;
+                    result = body.interpret(interpreter)?;
+                    eval_condition = condition.interpret(interpreter)?;
                 }
                 Ok(result)
             }
