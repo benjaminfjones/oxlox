@@ -48,10 +48,7 @@
 ///                | "(" expression ")" ;
 use crate::{
     ast::{
-        expr::{
-            AssignmentExpr, BinaryExpr, CallExpr, Expr, GroupingExpr, LiteralExpr, LogicalExpr,
-            UnaryExpr,
-        },
+        expr::{Expr, LiteralExpr},
         stmt::{FunDeclaration, Program, Stmt},
     },
     error::{BaseError, ErrorList, ErrorType},
@@ -427,10 +424,10 @@ impl Parser {
             let var_token = self.consume(&TokenType::Identifier)?;
             self.consume(&TokenType::Equal)?;
             let value = self.parse_expression()?;
-            Ok(Expr::Assignment(AssignmentExpr {
+            Ok(Expr::Assignment {
                 name: var_token,
                 value: Box::new(value),
-            }))
+            })
         } else {
             self.parse_logical_or()
         }
@@ -446,11 +443,11 @@ impl Parser {
         while self.match_any_token(operators) {
             let operator = self.previous_cloned();
             let right = operand_parser(self)?;
-            expr = Expr::Binary(BinaryExpr {
+            expr = Expr::Binary {
                 left: Box::new(expr),
                 operator,
                 right: Box::new(right),
-            });
+            };
         }
 
         Ok(expr)
@@ -467,11 +464,11 @@ impl Parser {
         while self.match_any_token(operators) {
             let operator = self.previous_cloned();
             let right = operand_parser(self)?;
-            expr = Expr::Logical(LogicalExpr {
+            expr = Expr::Logical {
                 left: Box::new(expr),
                 operator,
                 right: Box::new(right),
-            });
+            };
         }
 
         Ok(expr)
@@ -505,10 +502,10 @@ impl Parser {
         if self.match_any_token(&UNARY_OPERATORS) {
             let operator = self.previous_cloned();
             let expr = self.parse_unary()?;
-            Ok(Expr::Unary(UnaryExpr {
+            Ok(Expr::Unary {
                 operator,
                 right: Box::new(expr),
-            }))
+            })
         } else {
             self.parse_call()
         }
@@ -545,11 +542,11 @@ impl Parser {
         }
 
         let rparen = self.consume(&TokenType::RightParen)?;
-        Ok(Expr::Call(CallExpr {
+        Ok(Expr::Call {
             callee: Box::new(callee_expr),
             paren: rparen,
             arguments,
-        }))
+        })
     }
 
     fn parse_primary(&mut self) -> Result<Expr, BaseError> {
@@ -585,13 +582,13 @@ impl Parser {
                     .with_token(self.peek_owned());
                 Err(err)
             } else {
-                Ok(Expr::Grouping(GroupingExpr {
+                Ok(Expr::Grouping {
                     expr: Box::new(expr),
-                }))
+                })
             }
         } else if self.match_token(&TokenType::Identifier) {
-            let t = self.previous_cloned();
-            Ok(Expr::Variable(t))
+            let name = self.previous_cloned();
+            Ok(Expr::Variable { name })
         } else {
             let err = BaseError::new(ErrorType::ParseError, "unexpected token")
                 .with_token(self.peek_owned());
@@ -682,17 +679,17 @@ mod test {
     fn test_parse_expression_one_plus_one_equals_2() {
         let expr = parse_to_expression("1 + 1 == 2").unwrap();
         match expr {
-            Expr::Binary(BinaryExpr {
+            Expr::Binary {
                 left: l,
                 operator: o,
                 right: r,
-            }) => {
+            } => {
                 match *l {
-                    Expr::Binary(BinaryExpr {
+                    Expr::Binary {
                         left: ll,
                         operator: lo,
                         right: lr,
-                    }) => {
+                    } => {
                         assert!(matches!(*ll, Expr::Literal(_)));
                         assert_eq!(lo.typ, TokenType::Plus);
                         assert!(matches!(*lr, Expr::Literal(_)));
@@ -710,19 +707,19 @@ mod test {
     fn test_parse_expression_2_equals_one_plus_one() {
         let expr = parse_to_expression("2 == 1 + 1").unwrap();
         match expr {
-            Expr::Binary(BinaryExpr {
+            Expr::Binary {
                 left: l,
                 operator: o,
                 right: r,
-            }) => {
+            } => {
                 assert!(matches!(*l, Expr::Literal(_)));
                 assert_eq!(o.typ, TokenType::EqualEqual);
                 match *r {
-                    Expr::Binary(BinaryExpr {
+                    Expr::Binary {
                         left: rl,
                         operator: ro,
                         right: rr,
-                    }) => {
+                    } => {
                         assert!(matches!(*rl, Expr::Literal(_)));
                         assert_eq!(ro.typ, TokenType::Plus);
                         assert!(matches!(*rr, Expr::Literal(_)));
@@ -738,12 +735,12 @@ mod test {
     fn test_parse_expression_grouping() {
         let expr = parse_to_expression("(1 - 1) - 1").unwrap();
         match expr {
-            Expr::Binary(BinaryExpr {
+            Expr::Binary {
                 left: l,
                 operator: o,
                 right: r,
-            }) => {
-                assert!(matches!(*l, Expr::Grouping(_)));
+            } => {
+                assert!(matches!(*l, Expr::Grouping { expr: _ }));
                 assert_eq!(o.typ, TokenType::Minus);
                 assert!(matches!(*r, Expr::Literal(_)));
             }

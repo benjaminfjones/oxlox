@@ -13,7 +13,7 @@ pub trait Interpret {
 //
 
 use crate::{
-    ast::expr::{Expr, GroupingExpr, LiteralExpr, LogicalExpr},
+    ast::expr::{Expr, LiteralExpr},
     token::TokenType,
 };
 
@@ -28,48 +28,26 @@ impl Interpret for LiteralExpr {
     }
 }
 
-impl Interpret for LogicalExpr {
-    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
-        let left_val = self.left.interpret(interpreter)?;
-        match &self.operator.typ {
-            TokenType::Or => {
-                if left_val.is_truthy() {
-                    Ok(RuntimeValue::Bool(true))
-                } else {
-                    self.right.interpret(interpreter)
-                }
-            }
-            TokenType::And => {
-                if left_val.is_truthy() {
-                    self.right.interpret(interpreter)
-                } else {
-                    Ok(RuntimeValue::Bool(false))
-                }
-            }
-            _ => Err(
-                BaseError::new(ErrorType::RuntimeError, "unexpected logical operator")
-                    .with_token(self.operator.to_owned()),
-            ),
-        }
-    }
-}
-
 impl Interpret for Expr {
     fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
         match self {
-            Expr::Assignment(ae) => {
-                let right_val = ae.value.interpret(interpreter)?;
+            Expr::Assignment { name, value } => {
+                let right_val = value.interpret(interpreter)?;
                 interpreter.environment.assign(
-                    ae.name.lexeme.as_ref().unwrap(),
+                    name.lexeme.as_ref().unwrap(),
                     right_val.clone(),
-                    &ae.name,
+                    name,
                 )?;
                 Ok(right_val)
             }
-            Expr::Binary(be) => {
-                let left_val = be.left.interpret(interpreter)?;
-                let right_val = be.right.interpret(interpreter)?;
-                match &be.operator.typ {
+            Expr::Binary {
+                left,
+                operator,
+                right,
+            } => {
+                let left_val = left.interpret(interpreter)?;
+                let right_val = right.interpret(interpreter)?;
+                match &operator.typ {
                     // Arithmetic, overloaded for Number and String
                     TokenType::Plus => match (left_val, right_val) {
                         (RuntimeValue::Number(x), RuntimeValue::Number(y)) => {
@@ -80,72 +58,76 @@ impl Interpret for Expr {
                         }
                         _ => Err(
                             BaseError::new(ErrorType::RuntimeError, "invalid operand types")
-                                .with_token(be.operator.to_owned()),
+                                .with_token(operator.to_owned()),
                         ),
                     },
                     TokenType::Minus => {
-                        let left_num = assert_runtime_number(left_val, &be.operator)?;
-                        let right_num = assert_runtime_number(right_val, &be.operator)?;
+                        let left_num = assert_runtime_number(left_val, operator)?;
+                        let right_num = assert_runtime_number(right_val, operator)?;
                         Ok(RuntimeValue::Number(left_num - right_num))
                     }
                     TokenType::Star => {
-                        let left_num = assert_runtime_number(left_val, &be.operator)?;
-                        let right_num = assert_runtime_number(right_val, &be.operator)?;
+                        let left_num = assert_runtime_number(left_val, operator)?;
+                        let right_num = assert_runtime_number(right_val, operator)?;
                         Ok(RuntimeValue::Number(left_num * right_num))
                     }
                     TokenType::Slash => {
-                        let left_num = assert_runtime_number(left_val, &be.operator)?;
-                        let right_num = assert_runtime_number(right_val, &be.operator)?;
+                        let left_num = assert_runtime_number(left_val, operator)?;
+                        let right_num = assert_runtime_number(right_val, operator)?;
                         // TODO: handle div by 0 gracefully as a BaseError
                         Ok(RuntimeValue::Number(left_num / right_num))
                     }
 
                     // Equality
                     TokenType::EqualEqual => {
-                        let b = left_val.eq_at_token(&right_val, &be.operator)?;
+                        let b = left_val.eq_at_token(&right_val, operator)?;
                         Ok(RuntimeValue::Bool(b))
                     }
                     TokenType::BangEqual => {
-                        let b = left_val.eq_at_token(&right_val, &be.operator)?;
+                        let b = left_val.eq_at_token(&right_val, operator)?;
                         Ok(RuntimeValue::Bool(!b))
                     }
 
                     // Comparison
                     TokenType::Greater => {
-                        let b = left_val.gt_at_token(&right_val, &be.operator)?;
+                        let b = left_val.gt_at_token(&right_val, operator)?;
                         Ok(RuntimeValue::Bool(b))
                     }
                     TokenType::GreaterEqual => {
-                        let b = left_val.ge_at_token(&right_val, &be.operator)?;
+                        let b = left_val.ge_at_token(&right_val, operator)?;
                         Ok(RuntimeValue::Bool(b))
                     }
                     // left < right <=> !(left >= right)
                     TokenType::Less => {
-                        let b = left_val.ge_at_token(&right_val, &be.operator)?;
+                        let b = left_val.ge_at_token(&right_val, operator)?;
                         Ok(RuntimeValue::Bool(!b))
                     }
                     // left <= right <=> !(left > right)
                     TokenType::LessEqual => {
-                        let b = left_val.gt_at_token(&right_val, &be.operator)?;
+                        let b = left_val.gt_at_token(&right_val, operator)?;
                         Ok(RuntimeValue::Bool(!b))
                     }
 
                     _ => Err(
                         BaseError::new(ErrorType::RuntimeError, "upsupported operator")
-                            .with_token(be.operator.to_owned()),
+                            .with_token(operator.to_owned()),
                     ),
                 }
             }
-            Expr::Call(ce) => {
+            Expr::Call {
+                callee,
+                paren,
+                arguments,
+            } => {
                 // Evaluate the callee experession. If this is not a Callable variant, we return a
                 // RuntimeError at callee.call()
-                let callee = ce.callee.interpret(interpreter)?;
+                let callee = callee.interpret(interpreter)?;
 
                 // Evaluate the arguments in order
-                let mut arguments: Vec<RuntimeValue> = Vec::new();
-                for arg in ce.arguments.iter() {
+                let mut evaled_arguments: Vec<RuntimeValue> = Vec::new();
+                for arg in arguments.iter() {
                     let evaled_arg = arg.interpret(interpreter)?;
-                    arguments.push(evaled_arg);
+                    evaled_arguments.push(evaled_arg);
                 }
 
                 // Check the callee's arity
@@ -155,40 +137,61 @@ impl Interpret for Expr {
                         callee.arity(),
                         arguments.len()
                     );
-                    Err(BaseError::new(ErrorType::RuntimeError, &err_msg)
-                        .with_token(ce.paren.clone()))
+                    Err(BaseError::new(ErrorType::RuntimeError, &err_msg).with_token(paren.clone()))
                 } else {
-                    Ok(callee.call(arguments)?)
+                    Ok(callee.call(evaled_arguments)?)
                 }
             }
-            Expr::Grouping(ge) => ge.interpret(interpreter),
+            Expr::Grouping { expr } => expr.interpret(interpreter),
             Expr::Literal(le) => le.interpret(interpreter),
-            Expr::Logical(le) => le.interpret(interpreter),
-            Expr::Unary(ue) => {
-                let right_val = ue.right.interpret(interpreter)?;
-                match &ue.operator.typ {
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => {
+                let left_val = left.interpret(interpreter)?;
+                match &operator.typ {
+                    TokenType::Or => {
+                        if left_val.is_truthy() {
+                            Ok(RuntimeValue::Bool(true))
+                        } else {
+                            right.interpret(interpreter)
+                        }
+                    }
+                    TokenType::And => {
+                        if left_val.is_truthy() {
+                            right.interpret(interpreter)
+                        } else {
+                            Ok(RuntimeValue::Bool(false))
+                        }
+                    }
+                    // TODO: use a "make RuntimeError with token" helper
+                    _ => Err(BaseError::new(
+                        ErrorType::RuntimeError,
+                        "unexpected logical operator",
+                    )
+                    .with_token(operator.to_owned())),
+                }
+            }
+            Expr::Unary { operator, right } => {
+                let right_val = right.interpret(interpreter)?;
+                match &operator.typ {
                     TokenType::Bang => Ok(RuntimeValue::Bool(!right_val.is_truthy())),
                     TokenType::Minus => {
-                        let right_num = assert_runtime_number(right_val, &ue.operator)?;
+                        let right_num = assert_runtime_number(right_val, operator)?;
                         Ok(RuntimeValue::Number(-right_num))
                     }
                     _o => Err(
                         BaseError::new(ErrorType::RuntimeError, "unexpected unary operator")
-                            .with_token(ue.operator.to_owned()),
+                            .with_token(operator.to_owned()),
                     ),
                 }
             }
-            Expr::Variable(t) => {
-                let name = t.lexeme.as_ref().unwrap();
-                interpreter.environment.get(name, t)
+            Expr::Variable { name } => {
+                let id = name.lexeme.as_ref().unwrap();
+                interpreter.environment.get(id, name)
             }
         }
-    }
-}
-
-impl Interpret for GroupingExpr {
-    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
-        (*self.expr).interpret(interpreter)
     }
 }
 

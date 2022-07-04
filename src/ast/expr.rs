@@ -5,79 +5,62 @@ use crate::{ptypes::PInt, token::Token};
 /// Top level expression type
 #[derive(Clone, Debug)]
 pub enum Expr {
-    Assignment(AssignmentExpr),
-    Binary(BinaryExpr),
-    Call(CallExpr),
-    Grouping(GroupingExpr),
+    /// Variable assignment expression
+    Assignment {
+        name: Token,
+        value: Box<Expr>,
+    },
+    /// The application of a binary operation to two expressions.
+    ///
+    /// The valid binary operator tokens are:
+    ///
+    /// Arithmetic:
+    ///   - Minus
+    ///   - Plus
+    ///   - Slash
+    ///   - Star
+    /// Equality:
+    ///   - BangEqual
+    ///   - EqualEqual
+    /// Comparison:
+    ///   - Greater
+    ///   - GreaterEqual
+    ///   - Less
+    ///   - LessEqual
+    Binary {
+        left: Box<Expr>,
+        operator: Token,
+        right: Box<Expr>,
+    },
+    /// Function call expression
+    Call {
+        callee: Box<Expr>,
+        paren: Token,
+        arguments: Vec<Expr>,
+    },
+    /// A parenthesized expression
+    Grouping {
+        expr: Box<Expr>,
+    },
+    /// Literal expression
     Literal(LiteralExpr),
-    Logical(LogicalExpr),
-    Unary(UnaryExpr),
-    Variable(Token),
-}
-
-/// Variable assignment expression
-#[derive(Clone, Debug)]
-pub struct AssignmentExpr {
-    pub name: Token,
-    pub value: Box<Expr>,
-}
-
-/// The application of a binary operation to two expressions.
-///
-/// The valid binary operator tokens are:
-///
-/// Arithmetic:
-///   - Minus
-///   - Plus
-///   - Slash
-///   - Star
-/// Equality:
-///   - BangEqual
-///   - EqualEqual
-/// Comparison:
-///   - Greater
-///   - GreaterEqual
-///   - Less
-///   - LessEqual
-///
-/// This type owns pointers to other expressions and a copy of the operator token.
-#[derive(Clone, Debug)]
-pub struct BinaryExpr {
-    pub left: Box<Expr>,
-    pub operator: Token,
-    pub right: Box<Expr>,
-}
-
-#[derive(Clone, Debug)]
-pub struct CallExpr {
-    pub callee: Box<Expr>,
-    pub paren: Token,
-    pub arguments: Vec<Expr>,
-}
-
-#[derive(Clone, Debug)]
-pub struct LogicalExpr {
-    pub left: Box<Expr>,
-    pub operator: Token,
-    pub right: Box<Expr>,
-}
-
-impl fmt::Display for LogicalExpr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "({} {} {})",
-            self.left,
-            self.operator.lexeme.as_ref().unwrap(),
-            self.right
-        )
-    }
-}
-
-/// A parenthesized expression
-#[derive(Clone, Debug)]
-pub struct GroupingExpr {
-    pub expr: Box<Expr>,
+    /// A logical binary expression
+    ///
+    /// These are represented separately from the arithmetic binary expressions
+    /// mostly to keep match expressions on binary expressions simpler.
+    Logical {
+        left: Box<Expr>,
+        operator: Token,
+        right: Box<Expr>,
+    },
+    /// The application of a unary operator to an expression
+    Unary {
+        operator: Token,
+        right: Box<Expr>,
+    },
+    Variable {
+        name: Token,
+    },
 }
 
 /// A literal expression
@@ -100,33 +83,37 @@ impl fmt::Display for LiteralExpr {
     }
 }
 
-/// The application of a unary operator to an expression
-#[derive(Clone, Debug)]
-pub struct UnaryExpr {
-    pub operator: Token,
-    pub right: Box<Expr>,
-}
-
 // For some reason we format Exprs as if they were s-expressions
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Expr::Assignment(e) => write!(f, "(= {} {})", e.name, e.value),
-            Expr::Binary(e) => write!(f, "({} {} {})", e.operator, e.left, e.right),
-            Expr::Call(ce) => {
-                let args = ce
-                    .arguments
+            Expr::Assignment { name, value } => write!(f, "(= {} {})", name, value),
+            Expr::Binary {
+                left,
+                operator,
+                right,
+            } => write!(f, "({} {} {})", operator, left, right),
+            Expr::Call {
+                callee,
+                paren: _,
+                arguments,
+            } => {
+                let args = arguments
                     .iter()
                     .map(|e| format!("{}", e))
                     .collect::<Vec<String>>()
                     .join(" ");
-                write!(f, "({} {})", ce.callee, args)
+                write!(f, "({} {})", callee, args)
             }
-            Expr::Grouping(e) => write!(f, "(grouping {})", e.expr),
+            Expr::Grouping { expr } => write!(f, "(grouping {})", expr),
             Expr::Literal(e) => write!(f, "{}", e),
-            Expr::Logical(e) => write!(f, "{}", e),
-            Expr::Unary(e) => write!(f, "({} {})", e.operator, e.right),
-            Expr::Variable(t) => write!(f, "{}", t.lexeme.as_ref().unwrap()),
+            Expr::Logical {
+                left,
+                operator,
+                right,
+            } => write!(f, "({} {} {})", operator, left, right),
+            Expr::Unary { operator, right } => write!(f, "({} {})", operator, right),
+            Expr::Variable { name } => write!(f, "{}", name.lexeme.as_ref().unwrap()),
         }
     }
 }
@@ -140,7 +127,7 @@ mod test {
     fn test_print_expr() {
         let n = Expr::Literal(LiteralExpr::Number(3));
         let m = Expr::Literal(LiteralExpr::Number(4));
-        let p = Expr::Binary(BinaryExpr {
+        let p = Expr::Binary {
             left: Box::new(n.clone()),
             operator: Token::new(
                 TokenType::Star,
@@ -149,8 +136,8 @@ mod test {
                 SrcLoc::dummy(),
             ),
             right: Box::new(m.clone()),
-        });
-        let q = Expr::Binary(BinaryExpr {
+        };
+        let q = Expr::Binary {
             left: Box::new(n.clone()),
             operator: Token::new(
                 TokenType::Plus,
@@ -159,7 +146,7 @@ mod test {
                 SrcLoc::dummy(),
             ),
             right: Box::new(p.clone()),
-        });
+        };
         println!("n: {}", n);
         assert_eq!(format!("{}", n), "3".to_string());
         println!("m: {}", m);
