@@ -40,6 +40,12 @@ impl BaseError {
             ..self
         }
     }
+
+    /// Helper function for constructing common runtime errors with a message and token
+    /// representing source locattion.
+    pub fn runtime_error(msg: &str, token: &Token) -> Self {
+        Self::new(ErrorType::RuntimeError, msg).with_token(token.to_owned())
+    }
 }
 
 impl fmt::Display for BaseError {

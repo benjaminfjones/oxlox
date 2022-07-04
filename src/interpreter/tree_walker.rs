@@ -2,7 +2,7 @@ use super::runtime::{
     assert_runtime_number, Environment, RuntimeCallable, RuntimeDeclaredFn, RuntimeValue,
 };
 use crate::ast::stmt::{Program, Stmt};
-use crate::error::{BaseError, ErrorType};
+use crate::error::BaseError;
 
 pub trait Interpret {
     fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError>;
@@ -56,10 +56,7 @@ impl Interpret for Expr {
                         (RuntimeValue::String(s), RuntimeValue::String(t)) => {
                             Ok(RuntimeValue::String(s + &t))
                         }
-                        _ => Err(
-                            BaseError::new(ErrorType::RuntimeError, "invalid operand types")
-                                .with_token(operator.to_owned()),
-                        ),
+                        _ => Err(BaseError::runtime_error("invalid operand types", operator)),
                     },
                     TokenType::Minus => {
                         let left_num = assert_runtime_number(left_val, operator)?;
@@ -108,10 +105,7 @@ impl Interpret for Expr {
                         Ok(RuntimeValue::Bool(!b))
                     }
 
-                    _ => Err(
-                        BaseError::new(ErrorType::RuntimeError, "upsupported operator")
-                            .with_token(operator.to_owned()),
-                    ),
+                    _ => Err(BaseError::runtime_error("upsupported operator", operator)),
                 }
             }
             Expr::Call {
@@ -137,7 +131,7 @@ impl Interpret for Expr {
                         callee.arity(),
                         arguments.len()
                     );
-                    Err(BaseError::new(ErrorType::RuntimeError, &err_msg).with_token(paren.clone()))
+                    Err(BaseError::runtime_error(&err_msg, paren))
                 } else {
                     Ok(callee.call(evaled_arguments)?)
                 }
@@ -166,11 +160,10 @@ impl Interpret for Expr {
                         }
                     }
                     // TODO: use a "make RuntimeError with token" helper
-                    _ => Err(BaseError::new(
-                        ErrorType::RuntimeError,
+                    _ => Err(BaseError::runtime_error(
                         "unexpected logical operator",
-                    )
-                    .with_token(operator.to_owned())),
+                        operator,
+                    )),
                 }
             }
             Expr::Unary { operator, right } => {
@@ -181,10 +174,10 @@ impl Interpret for Expr {
                         let right_num = assert_runtime_number(right_val, operator)?;
                         Ok(RuntimeValue::Number(-right_num))
                     }
-                    _o => Err(
-                        BaseError::new(ErrorType::RuntimeError, "unexpected unary operator")
-                            .with_token(operator.to_owned()),
-                    ),
+                    _o => Err(BaseError::runtime_error(
+                        "unexpected unary operator",
+                        operator,
+                    )),
                 }
             }
             Expr::Variable { name } => {

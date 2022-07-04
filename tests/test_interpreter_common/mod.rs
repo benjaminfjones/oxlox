@@ -14,11 +14,13 @@ pub fn interpret_program(code: &str) -> Result<Interpreter, BaseError> {
     Ok(interpreter)
 }
 
+#[allow(dead_code)]
 pub fn assert_state(state: &Interpreter, var: &str, value: &RuntimeValue) {
     let state_val = state.get_state().get(var, &Token::dummy()).unwrap();
     assert!(state_val.eq_at_token(value, &Token::dummy()).unwrap());
 }
 
+#[allow(dead_code)]
 pub fn assert_state_predicate<F>(state: &Interpreter, var: &str, pred: F)
 where
     F: Fn(&RuntimeValue) -> bool,

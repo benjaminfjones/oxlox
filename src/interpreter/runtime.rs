@@ -45,33 +45,30 @@ impl RuntimeValue {
             (RuntimeValue::String(s), RuntimeValue::String(t)) => Ok(s == t),
             (RuntimeValue::Bool(b), RuntimeValue::Bool(c)) => Ok(b == c),
             (RuntimeValue::Nil, RuntimeValue::Nil) => Ok(true),
-            _ => Err(BaseError::new(
-                ErrorType::RuntimeError,
+            _ => Err(BaseError::runtime_error(
                 "equality type error: invalid operand types",
-            )
-            .with_token(token.to_owned())),
+                token,
+            )),
         }
     }
 
     pub fn ge_at_token(&self, other: &Self, token: &Token) -> Result<bool, BaseError> {
         match (self, other) {
             (RuntimeValue::Number(x), RuntimeValue::Number(y)) => Ok(x >= y),
-            _ => Err(BaseError::new(
-                ErrorType::RuntimeError,
+            _ => Err(BaseError::runtime_error(
                 "comparison type error: invalid operand types",
-            )
-            .with_token(token.to_owned())),
+                token,
+            )),
         }
     }
 
     pub fn gt_at_token(&self, other: &Self, token: &Token) -> Result<bool, BaseError> {
         match (self, other) {
             (RuntimeValue::Number(x), RuntimeValue::Number(y)) => Ok(x > y),
-            _ => Err(BaseError::new(
-                ErrorType::RuntimeError,
+            _ => Err(BaseError::runtime_error(
                 "comparison type error: invalid operand types",
-            )
-            .with_token(token.to_owned())),
+                token,
+            )),
         }
     }
 
