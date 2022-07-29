@@ -178,8 +178,7 @@ impl Callable for RuntimeDeclaredFn {
                 .define(arg.lexeme.as_ref().unwrap().to_string(), val.clone());
         }
         self.declaration.body.interpret(&mut local_interpreter)?;
-        // TODO: support return statements
-        Ok(RuntimeValue::Nil)
+        Ok(local_interpreter.get_and_clear_return_value())
     }
 }
 

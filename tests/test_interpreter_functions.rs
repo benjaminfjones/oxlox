@@ -24,15 +24,34 @@ fn test_interpret_call_clock_and_sleep() {
 
 #[test]
 fn test_interpret_call_user_function() {
-    interpret_program(
-        "fun print_succ(n) {
-            print n + 1;
+    let state = interpret_program(
+        "fun succ(n) {
+            return n + 1;
          }
          print \"succ(1) = \";
-         var result = print_succ(1);",
+         var two = succ(1);
+         print two;",
     )
     .expect("interpreter failed");
-    // TODO: when we support return statements, make this a return value assertion
+    assert_state(&state, "two", &RuntimeValue::Number(2));
+}
+
+#[test]
+fn test_interpret_call_function_with_nested_return() {
+    let state = interpret_program(
+        "fun count(n) {
+            while (n < 100) {
+                if (n == 3) {
+                    return n;
+                }
+                print n;
+                n = n + 1;
+            }
+         }
+         var result = count(1);",
+    )
+    .expect("interpreter failed");
+    assert_state(&state, "result", &RuntimeValue::Number(3));
 }
 
 // TODO: test recursion

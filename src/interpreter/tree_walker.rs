@@ -189,7 +189,22 @@ impl Interpret for Expr {
 }
 
 impl Interpret for Stmt {
+    /// Interpret a statement
+    ///
+    /// Note: most statement variants return Nil by convention, the exception being expression
+    /// statements, like function calls. These return what ever the function / expression evaluates
+    /// to.
     fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
+        // Before interpreting the statement, check the return value of the local interpreter's
+        // call stack. If present, we immediately return. The actual return value is captured
+        // upstream when a call expression is interpreted.
+        //
+        // TODO: consider a more general and flexible control flow construct. The current
+        // interpreter.return_value and should_jump methods are tailored to support (nested) return
+        // statements only
+        if interpreter.should_jump() {
+            return Ok(RuntimeValue::Nil);
+        }
         match self {
             Stmt::Expr(e) => e.interpret(interpreter),
             Stmt::Print(e) => {
@@ -214,14 +229,23 @@ impl Interpret for Stmt {
                 interpreter.environment.define(name.to_owned(), val);
                 Ok(RuntimeValue::Nil)
             }
+            // Note: the returned value for a block is always Nil. Blocks that should return a
+            // value, like function bodies are tracked at the interpreter level.
             Stmt::Block(statements) => {
                 interpreter.push_env();
-                let mut result: RuntimeValue = RuntimeValue::Nil;
                 for stmt in statements.iter() {
-                    result = stmt.interpret(interpreter)?;
+                    stmt.interpret(interpreter)?;
+                    // Short circuit if we hit a retrun statement in this block, or we've
+                    // returned from a nested block.
+                    //
+                    // Note: at the start of the for loop, we're guaranteed to not have a return
+                    // value present thanks to the pre-match check in `interpret`.
+                    if interpreter.should_jump() {
+                        break;
+                    }
                 }
                 interpreter.pop_env();
-                Ok(result)
+                Ok(RuntimeValue::Nil)
             }
             Stmt::IfStmt {
                 condition,
@@ -229,22 +253,29 @@ impl Interpret for Stmt {
                 else_stmt,
             } => {
                 let eval_condition = condition.interpret(interpreter)?;
-                let mut result = RuntimeValue::Nil;
                 if eval_condition.is_truthy() {
-                    result = then_stmt.interpret(interpreter)?;
+                    then_stmt.interpret(interpreter)?;
                 } else if let Some(else_stmt) = else_stmt.as_ref() {
-                    result = else_stmt.interpret(interpreter)?;
+                    else_stmt.interpret(interpreter)?;
                 }
-                Ok(result)
+                Ok(RuntimeValue::Nil)
             }
             Stmt::While { condition, body } => {
                 let mut eval_condition = condition.interpret(interpreter)?;
-                let mut result = RuntimeValue::Nil;
                 while eval_condition.is_truthy() {
-                    result = body.interpret(interpreter)?;
+                    body.interpret(interpreter)?;
+                    // Short circuit if the body returned
+                    if interpreter.should_jump() {
+                        break;
+                    }
                     eval_condition = condition.interpret(interpreter)?;
                 }
-                Ok(result)
+                Ok(RuntimeValue::Nil)
+            }
+            Stmt::Return { keyword: _, expr } => {
+                let return_value = expr.interpret(interpreter)?;
+                interpreter.return_value = Some(return_value);
+                Ok(RuntimeValue::Nil)
             }
         }
     }
@@ -266,6 +297,7 @@ impl Interpret for Program {
 #[derive(Default)]
 pub struct Interpreter {
     environment: Environment,
+    return_value: Option<RuntimeValue>,
 }
 
 impl Interpreter {
@@ -295,6 +327,19 @@ impl Interpreter {
 
     pub fn get_state_mut(&mut self) -> &mut Environment {
         &mut self.environment
+    }
+
+    /// Get the return value and clear it from the local interpreter's state
+    ///
+    /// If no return value is present, return Nil. This behavior reflects the
+    /// semantics of declared functions whose body contains no return.
+    pub fn get_and_clear_return_value(&mut self) -> RuntimeValue {
+        self.return_value.take().unwrap_or(RuntimeValue::Nil)
+    }
+
+    /// Determine if the local interpreter should jump out of the current call stack
+    pub fn should_jump(&self) -> bool {
+        self.return_value.is_some()
     }
 }
 

@@ -43,6 +43,8 @@ pub enum Stmt {
         condition: Box<Expr>,
         body: Box<Stmt>,
     },
+    /// Return statement
+    Return { keyword: Token, expr: Box<Expr> },
 }
 
 #[derive(Clone, Debug)]

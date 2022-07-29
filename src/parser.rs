@@ -20,14 +20,16 @@
 ///                | block
 ///                | forStmt
 ///                | ifStmt
-///                | whileStmt ;
+///                | whileStmt
+///                | returnStmt ;
 /// block          → "{" declaration* "}" ;
-/// ifStmt         → "if" "(" expression ")" statement
-///                  ( "else" statement )? ;
-/// whileStmt      → "while" "(" expression ")" statement ;
 /// forStmt        → "for" "(" varDecl | expression | ";" )
 ///                  expression? ";"
 ///                  expression? ")" statement
+/// ifStmt         → "if" "(" expression ")" statement
+///                  ( "else" statement )? ;
+/// whileStmt      → "while" "(" expression ")" statement ;
+/// returnStmt     > "return" expression ;
 ///
 /// Expression grammar, stratified according to precedent and associativity.
 ///
@@ -349,6 +351,8 @@ impl Parser {
             })
         } else if self.match_token(&TokenType::For) {
             self.parse_for_statement()
+        } else if self.match_token(&TokenType::Return) {
+            self.parse_return_statement()
         } else {
             // Case: expression statement
             self.parse_expr_statement()
@@ -359,6 +363,16 @@ impl Parser {
         let expr = self.parse_expression()?;
         self.consume(&TokenType::Semicolon)?;
         Ok(Stmt::Expr(Box::new(expr)))
+    }
+
+    fn parse_return_statement(&mut self) -> Result<Stmt, BaseError> {
+        let keyword = self.previous_cloned();
+        let expr = self.parse_expression()?;
+        self.consume(&TokenType::Semicolon)?;
+        Ok(Stmt::Return {
+            keyword,
+            expr: Box::new(expr),
+        })
     }
 
     /// Parse a for loop and desuger into a while loop
