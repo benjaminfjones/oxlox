@@ -133,7 +133,7 @@ impl Scanner {
 
     fn add_number_token(&mut self) {
         while let Some(c) = self.peek() {
-            if !c.is_digit(10) {
+            if !c.is_ascii_digit() {
                 // end of the integral number part of the lexeme
                 break;
             }
@@ -272,7 +272,7 @@ impl Scanner {
 
             // Literals
             '"' => self.add_string_token(),
-            c if c.is_digit(10) => self.add_number_token(),
+            c if c.is_ascii_digit() => self.add_number_token(),
             c if c.is_ascii_alphabetic() => self.add_identifier_token(),
 
             // default
