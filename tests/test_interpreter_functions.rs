@@ -54,7 +54,6 @@ fn test_interpret_call_function_with_nested_return() {
     assert_state(&state, "result", &RuntimeValue::Number(3));
 }
 
-// TODO: test recursion
 // TODO: test nested function declaration
 // TODO: test runtime errors during declared function exec
 // TODO: test runtime errors during builtin function exec

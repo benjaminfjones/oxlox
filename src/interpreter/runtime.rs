@@ -111,9 +111,9 @@ impl RuntimeValue {
         }))
     }
 
-    pub fn call(&self, arguments: Vec<Self>) -> Result<Self, BaseError> {
+    pub fn call(&self, environment: &Environment, arguments: Vec<Self>) -> Result<Self, BaseError> {
         match self {
-            RuntimeValue::Callable(rc) => rc.call(arguments),
+            RuntimeValue::Callable(rc) => rc.call(environment, arguments),
             _ => Err(BaseError::new(
                 ErrorType::RuntimeError,
                 "cannot call non-callable runtime value",
@@ -123,7 +123,11 @@ impl RuntimeValue {
 }
 
 pub trait Callable {
-    fn call(&self, arguments: Vec<RuntimeValue>) -> Result<RuntimeValue, BaseError>;
+    fn call(
+        &self,
+        environment: &Environment,
+        arguments: Vec<RuntimeValue>,
+    ) -> Result<RuntimeValue, BaseError>;
 }
 
 #[derive(Clone, Debug)]
@@ -143,10 +147,14 @@ impl fmt::Display for RuntimeCallable {
 }
 
 impl Callable for RuntimeCallable {
-    fn call(&self, arguments: Vec<RuntimeValue>) -> Result<RuntimeValue, BaseError> {
+    fn call(
+        &self,
+        environment: &Environment,
+        arguments: Vec<RuntimeValue>,
+    ) -> Result<RuntimeValue, BaseError> {
         match self {
-            RuntimeCallable::BuiltinFn(rb) => rb.call(arguments),
-            RuntimeCallable::DeclaredFn(rd) => rd.call(arguments),
+            RuntimeCallable::BuiltinFn(rb) => rb.call(environment, arguments),
+            RuntimeCallable::DeclaredFn(rd) => rd.call(environment, arguments),
         }
     }
 }
@@ -159,7 +167,11 @@ pub struct RuntimeBuiltinFn {
 }
 
 impl Callable for RuntimeBuiltinFn {
-    fn call(&self, arguments: Vec<RuntimeValue>) -> Result<RuntimeValue, BaseError> {
+    fn call(
+        &self,
+        _environment: &Environment,
+        arguments: Vec<RuntimeValue>,
+    ) -> Result<RuntimeValue, BaseError> {
         Ok((self.implementation)(arguments))
     }
 }
@@ -170,8 +182,12 @@ pub struct RuntimeDeclaredFn {
 }
 
 impl Callable for RuntimeDeclaredFn {
-    fn call(&self, arguments: Vec<RuntimeValue>) -> Result<RuntimeValue, BaseError> {
-        let mut local_interpreter = Interpreter::default();
+    fn call(
+        &self,
+        environment: &Environment,
+        arguments: Vec<RuntimeValue>,
+    ) -> Result<RuntimeValue, BaseError> {
+        let mut local_interpreter = Interpreter::new_with_inherited_globals(environment);
         for (arg, val) in self.declaration.parameters.iter().zip(arguments.iter()) {
             local_interpreter
                 .get_state_mut()
@@ -215,6 +231,17 @@ impl Environment {
     /// Create a new environment stack with builtin globals at the bottom
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create a new environment that has a copy of `other`'s globals
+    pub fn new_with_inherited_globals(other: &Environment) -> Self {
+        if !other.stack.is_empty() {
+            Environment {
+                stack: vec![other.stack[0].clone()],
+            }
+        } else {
+            panic!("unexpected empty environment")
+        }
     }
 
     /// Push a new local envionment

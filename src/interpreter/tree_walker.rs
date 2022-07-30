@@ -133,7 +133,7 @@ impl Interpret for Expr {
                     );
                     Err(BaseError::runtime_error(&err_msg, paren))
                 } else {
-                    Ok(callee.call(evaled_arguments)?)
+                    Ok(callee.call(&interpreter.environment, evaled_arguments)?)
                 }
             }
             Expr::Grouping { expr } => expr.interpret(interpreter),
@@ -301,6 +301,14 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
+    /// Create a new interpreter whose base environment is a copy of `other`'s
+    pub fn new_with_inherited_globals(other: &Environment) -> Self {
+        Interpreter {
+            environment: Environment::new_with_inherited_globals(other),
+            return_value: None,
+        }
+    }
+
     /// Interpret a program, producing side effects and updating interpreter state
     pub fn interpret(&mut self, program: Program) -> Result<(), BaseError> {
         match program.interpret(self) {
