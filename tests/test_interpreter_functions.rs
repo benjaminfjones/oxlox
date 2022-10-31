@@ -106,4 +106,28 @@ fn test_interpret_sleep_of_string() {
     );
 }
 
+// TODO: fix this test once closures are supported
+#[test]
+fn test_interpret_closure() {
+    let state = interpret_program(
+        "
+        fun makeCounter() {
+            var i = 0;
+            fun count() {
+                i = i + 1;
+                return i;
+            }
+            return count;
+        }
+        var counter = makeCounter();
+        var result1 = counter();
+        var result2 = counter();
+    ",
+    )
+    .unwrap_err();
+    assert_eq!(state.message(), "undefined variable")
+    // assert_state(&state, "r1", &RuntimeValue::Number(1));
+    // assert_state(&state, "r2", &RuntimeValue::Number(2));
+}
+
 // TODO: test nested function declaration
