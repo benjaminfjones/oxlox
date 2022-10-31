@@ -28,7 +28,7 @@ impl fmt::Display for RuntimeValue {
             RuntimeValue::Callable(rc) => write!(f, "<function {}>", rc),
             RuntimeValue::Nil => write!(f, "nil"),
             RuntimeValue::Number(x) => write!(f, "{}", x),
-            RuntimeValue::String(s) => write!(f, "{}", &s),
+            RuntimeValue::String(s) => write!(f, "\"{}\"", &s),
         }
     }
 }
@@ -102,7 +102,7 @@ impl RuntimeValue {
     pub fn new_builtin_callable(
         name: String,
         arity: usize,
-        implementation: fn(Vec<RuntimeValue>) -> RuntimeValue,
+        implementation: fn(Vec<RuntimeValue>) -> Result<RuntimeValue, BaseError>,
     ) -> Self {
         RuntimeValue::Callable(RuntimeCallable::BuiltinFn(RuntimeBuiltinFn {
             name,
@@ -163,7 +163,7 @@ impl Callable for RuntimeCallable {
 pub struct RuntimeBuiltinFn {
     pub name: String,
     pub arity: usize,
-    pub implementation: fn(Vec<RuntimeValue>) -> RuntimeValue,
+    pub implementation: fn(Vec<RuntimeValue>) -> Result<RuntimeValue, BaseError>,
 }
 
 impl Callable for RuntimeBuiltinFn {
@@ -172,7 +172,7 @@ impl Callable for RuntimeBuiltinFn {
         _environment: &Environment,
         arguments: Vec<RuntimeValue>,
     ) -> Result<RuntimeValue, BaseError> {
-        Ok((self.implementation)(arguments))
+        (self.implementation)(arguments)
     }
 }
 
@@ -213,6 +213,7 @@ pub fn assert_runtime_number(val: RuntimeValue, token: &Token) -> Result<PInt, B
 ///
 /// The environment is represented using a stack of variable mappings. The first element of
 /// the stack is the global environment, the last is the most local scope's environment.
+#[derive(Debug)]
 pub struct Environment {
     stack: Vec<HashMap<String, RuntimeValue>>,
 }
@@ -318,11 +319,16 @@ fn define_globals() -> HashMap<String, RuntimeValue> {
 ///
 /// Note: This builtin will panic if the Rust stdlib fails to measure time since UNIX_EPOCH (very
 /// unlikely), or if the number of milliseconds exceeds max i64.
-fn builtin_clock(_arguments: Vec<RuntimeValue>) -> RuntimeValue {
+fn builtin_clock(_arguments: Vec<RuntimeValue>) -> Result<RuntimeValue, BaseError> {
     let since_epoc: Duration = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .expect("critical error: failed to measure system time");
-    RuntimeValue::Number(since_epoc.as_millis() as i64)
+        .map_err(|_| {
+            BaseError::new(
+                ErrorType::RuntimeError,
+                "critical error: failed to measure system time",
+            )
+        })?;
+    Ok(RuntimeValue::Number(since_epoc.as_millis() as i64))
 }
 
 /// Sleep for the given number of milliseconds
@@ -331,13 +337,12 @@ fn builtin_clock(_arguments: Vec<RuntimeValue>) -> RuntimeValue {
 ///   duration (type: Number): Number of milliseconds to sleep
 ///
 /// return: Nil
-///
-/// TODO: support returning a RuntimeError
-fn builtin_sleep(arguments: Vec<RuntimeValue>) -> RuntimeValue {
-    let duration = match arguments[0] {
-        RuntimeValue::Number(d) => Duration::from_millis(d as u64),
-        _ => panic!("type error: expected Number, got {}", arguments[0]),
-    };
-    thread::sleep(duration);
-    RuntimeValue::Nil
+fn builtin_sleep(arguments: Vec<RuntimeValue>) -> Result<RuntimeValue, BaseError> {
+    if let RuntimeValue::Number(d) = arguments[0] {
+        let duration = Duration::from_millis(d as u64);
+        thread::sleep(duration);
+        return Ok(RuntimeValue::Nil);
+    }
+    let error_msg = format!("type error: expected Number, got {}", arguments[0]);
+    Err(BaseError::new(ErrorType::RuntimeError, &error_msg))
 }

@@ -1,5 +1,5 @@
-use oxlox::interpreter::runtime::RuntimeValue;
 use oxlox::token::Token;
+use oxlox::{interpreter::runtime::RuntimeValue, src_loc::SrcLoc};
 
 mod test_interpreter_common;
 use test_interpreter_common::{assert_state, assert_state_predicate, interpret_program};
@@ -54,6 +54,56 @@ fn test_interpret_call_function_with_nested_return() {
     assert_state(&state, "result", &RuntimeValue::Number(3));
 }
 
+#[test]
+fn test_interpret_function_with_too_many_args() {
+    let expected_error = interpret_program(
+        "fun add(a, b) {
+            return a + b;
+         }
+         add(1,2,3);",
+    )
+    .unwrap_err();
+    assert_eq!(expected_error.message(), "expected 2 arguments, but got 3");
+}
+
+#[test]
+fn test_interpret_function_with_too_few_args() {
+    let expected_error = interpret_program(
+        "fun add(a, b) {
+            return a + b;
+         }
+         add(1);",
+    )
+    .unwrap_err();
+    assert_eq!(expected_error.message(), "expected 2 arguments, but got 1");
+}
+
+#[test]
+fn test_interpret_declared_function_with_runtime_error() {
+    let expected_error = interpret_program(
+        "fun add(a, b) {
+            return a + \"endless\";
+         }
+         add(1, 2);",
+    )
+    .unwrap_err();
+    assert_eq!(expected_error.message(), "invalid operand types");
+    assert_eq!(
+        expected_error.src_loc().unwrap(),
+        &SrcLoc {
+            offset: 37, // the "+"
+            length: 1
+        }
+    );
+}
+
+#[test]
+fn test_interpret_sleep_of_string() {
+    let expected_error = interpret_program("sleep(\"sandman\");").unwrap_err();
+    assert_eq!(
+        expected_error.message(),
+        "type error: expected Number, got \"sandman\""
+    );
+}
+
 // TODO: test nested function declaration
-// TODO: test runtime errors during declared function exec
-// TODO: test runtime errors during builtin function exec

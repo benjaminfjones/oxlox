@@ -294,7 +294,7 @@ impl Interpret for Program {
 /// Interpreter state
 ///
 /// TODO: represent I/O streams here, improve testing to capture stdout
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Interpreter {
     environment: Environment,
     return_value: Option<RuntimeValue>,

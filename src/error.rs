@@ -28,8 +28,11 @@ impl BaseError {
     }
 
     pub fn with_token(self, token: Token) -> Self {
+        // TODO: share or consolidate source location data
+        let src_loc_copy = token.src_loc.clone();
         BaseError {
             token: Some(token),
+            src_loc: Some(src_loc_copy),
             ..self
         }
     }
@@ -46,8 +49,22 @@ impl BaseError {
     pub fn runtime_error(msg: &str, token: &Token) -> Self {
         Self::new(ErrorType::RuntimeError, msg).with_token(token.to_owned())
     }
+
+    pub fn error_type(&self) -> &ErrorType {
+        &self.error_type
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    // TODO: if there is a token, look in the token for src_loc as well?
+    pub fn src_loc(&self) -> Option<&SrcLoc> {
+        self.src_loc.as_ref()
+    }
 }
 
+// TODO: render errors with original source program text
 impl fmt::Display for BaseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let src_loc_str = if let Some(s) = self.src_loc.as_ref() {

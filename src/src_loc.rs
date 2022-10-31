@@ -1,7 +1,7 @@
 use std::fmt;
 
 /// An internal source code location
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SrcLoc {
     /// character offset into source
     pub offset: usize,
