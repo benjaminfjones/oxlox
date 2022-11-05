@@ -5,7 +5,7 @@ use crate::ast::stmt::{Program, Stmt};
 use crate::error::BaseError;
 
 pub trait Interpret {
-    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError>;
+    fn interpret(&self, interpreter: &mut InterpreterState) -> Result<RuntimeValue, BaseError>;
 }
 
 //
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl Interpret for LiteralExpr {
-    fn interpret(&self, _interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
+    fn interpret(&self, _interpreter: &mut InterpreterState) -> Result<RuntimeValue, BaseError> {
         Ok(match self {
             LiteralExpr::Bool(b) => RuntimeValue::Bool(*b),
             LiteralExpr::Nil => RuntimeValue::Nil,
@@ -29,7 +29,7 @@ impl Interpret for LiteralExpr {
 }
 
 impl Interpret for Expr {
-    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
+    fn interpret(&self, interpreter: &mut InterpreterState) -> Result<RuntimeValue, BaseError> {
         match self {
             Expr::Assignment { name, value } => {
                 let right_val = value.interpret(interpreter)?;
@@ -191,18 +191,17 @@ impl Interpret for Expr {
 impl Interpret for Stmt {
     /// Interpret a statement
     ///
-    /// Note: most statement variants return Nil by convention, the exception being expression
-    /// statements, like function calls. These return what ever the function / expression evaluates
-    /// to.
-    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
-        // Before interpreting the statement, check the return value of the local interpreter's
-        // call stack. If present, we immediately return. The actual return value is captured
-        // upstream when a call expression is interpreted.
+    /// All statement variants return Nil by convention. Expression statements that should
+    /// return a value, like function calls, return via the call stack.
+    fn interpret(&self, interpreter: &mut InterpreterState) -> Result<RuntimeValue, BaseError> {
+        // Before interpreting the statement, check the return value of the local
+        // interpreter's call stack. If present, we immediately return. The actual return
+        // value is captured upstream when a call expression is interpreted.
         //
         // TODO: consider a more general and flexible control flow construct. The current
-        // interpreter.return_value and should_jump methods are tailored to support (nested) return
-        // statements only
-        if interpreter.should_jump() {
+        // `InterpreterState::return_is_set` method is tailored to support (nested)
+        // return statements only
+        if interpreter.return_is_set() {
             return Ok(RuntimeValue::Nil);
         }
         match self {
@@ -229,8 +228,6 @@ impl Interpret for Stmt {
                 interpreter.environment.define(name.to_owned(), val);
                 Ok(RuntimeValue::Nil)
             }
-            // Note: the returned value for a block is always Nil. Blocks that should return a
-            // value, like function bodies are tracked at the interpreter level.
             Stmt::Block(statements) => {
                 interpreter.push_env();
                 for stmt in statements.iter() {
@@ -240,7 +237,7 @@ impl Interpret for Stmt {
                     //
                     // Note: at the start of the for loop, we're guaranteed to not have a return
                     // value present thanks to the pre-match check in `interpret`.
-                    if interpreter.should_jump() {
+                    if interpreter.return_is_set() {
                         break;
                     }
                 }
@@ -265,7 +262,7 @@ impl Interpret for Stmt {
                 while eval_condition.is_truthy() {
                     body.interpret(interpreter)?;
                     // Short circuit if the body returned
-                    if interpreter.should_jump() {
+                    if interpreter.return_is_set() {
                         break;
                     }
                     eval_condition = condition.interpret(interpreter)?;
@@ -282,7 +279,7 @@ impl Interpret for Stmt {
 }
 
 impl Interpret for Program {
-    fn interpret(&self, interpreter: &mut Interpreter) -> Result<RuntimeValue, BaseError> {
+    fn interpret(&self, interpreter: &mut InterpreterState) -> Result<RuntimeValue, BaseError> {
         let mut result: RuntimeValue = RuntimeValue::Nil;
         for stmt in self.statements() {
             result = stmt.interpret(interpreter)?;
@@ -293,17 +290,20 @@ impl Interpret for Program {
 
 /// Interpreter state
 ///
+/// The tree walking interpreter state contains a call stack (`Environment`) and
+/// control flow information, like jump/return flags and values.
+///
 /// TODO: represent I/O streams here, improve testing to capture stdout
 #[derive(Debug, Default)]
-pub struct Interpreter {
+pub struct InterpreterState {
     environment: Environment,
     return_value: Option<RuntimeValue>,
 }
 
-impl Interpreter {
+impl InterpreterState {
     /// Create a new interpreter whose base environment is a copy of `other`'s
     pub fn new_with_inherited_globals(other: &Environment) -> Self {
-        Interpreter {
+        InterpreterState {
             environment: Environment::new_with_inherited_globals(other),
             return_value: None,
         }
@@ -346,7 +346,8 @@ impl Interpreter {
     }
 
     /// Determine if the local interpreter should jump out of the current call stack
-    pub fn should_jump(&self) -> bool {
+    /// to return a value
+    pub fn return_is_set(&self) -> bool {
         self.return_value.is_some()
     }
 }
@@ -364,7 +365,7 @@ mod test {
         let expr = Parser::new(tokens)
             .parse_expression()
             .expect("unexpected parser error");
-        let mut interpreter = Interpreter::default();
+        let mut interpreter = InterpreterState::default();
         expr.interpret(&mut interpreter)
     }
 

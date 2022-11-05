@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 use crate::ast::stmt::FunDeclaration;
 use crate::{
     error::{BaseError, ErrorType},
-    interpreter::tree_walker::{Interpret, Interpreter},
+    interpreter::tree_walker::{Interpret, InterpreterState},
     ptypes::PInt,
     token::Token,
 };
@@ -187,7 +187,7 @@ impl Callable for RuntimeDeclaredFn {
         environment: &Environment,
         arguments: Vec<RuntimeValue>,
     ) -> Result<RuntimeValue, BaseError> {
-        let mut local_interpreter = Interpreter::new_with_inherited_globals(environment);
+        let mut local_interpreter = InterpreterState::new_with_inherited_globals(environment);
         for (arg, val) in self.declaration.parameters.iter().zip(arguments.iter()) {
             local_interpreter
                 .get_state_mut()
