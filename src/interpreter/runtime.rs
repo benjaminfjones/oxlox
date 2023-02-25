@@ -176,9 +176,20 @@ impl Callable for RuntimeBuiltinFn {
     }
 }
 
+/// Runtime value representing a runtime-declared function, including it's closure.
 #[derive(Clone, Debug)]
 pub struct RuntimeDeclaredFn {
-    pub declaration: FunDeclaration,
+    declaration: FunDeclaration,
+    closure_pointer: usize,
+}
+
+impl RuntimeDeclaredFn {
+    pub fn new(declaration: FunDeclaration, closure_pointer: usize) -> Self {
+        RuntimeDeclaredFn {
+            declaration,
+            closure_pointer,
+        }
+    }
 }
 
 impl Callable for RuntimeDeclaredFn {
@@ -211,11 +222,20 @@ pub fn assert_runtime_number(val: RuntimeValue, token: &Token) -> Result<PInt, B
 
 /// Runtime environment for the tree walking interpreter
 ///
-/// The environment is represented using a stack of variable mappings. The first element of
-/// the stack is the global environment, the last is the most local scope's environment.
-#[derive(Debug)]
+/// Implementation details:
+/// - The environment is represented using a stack of variable mappings. The first element of the
+///   stack is the global environment, the last is the most local scope's environment.
+/// - The `stack_pointer` is an index into the stack which points at the current local variable
+///   mappings
+/// - New variable mappings are pushed on the stack when the interpreter enters a new scope
+/// - The `stack_pointer` is moved whenever a push or pop occurs, but variable mappings aren't
+///   ever removed from the stack. They are kept in order to retain references to variabels in
+///   closures that may be returned out of local scopes.
+///   TODO: use a more memory efficient mechanism for variables which are captured in closures.
+#[derive(Clone, Debug)]
 pub struct Environment {
     stack: Vec<HashMap<String, RuntimeValue>>,
+    stack_pointer: usize,
 }
 
 impl Default for Environment {
@@ -224,6 +244,7 @@ impl Default for Environment {
     fn default() -> Self {
         Environment {
             stack: vec![define_globals()],
+            stack_pointer: 0,
         }
     }
 }
@@ -239,6 +260,7 @@ impl Environment {
         if !other.stack.is_empty() {
             Environment {
                 stack: vec![other.stack[0].clone()],
+                stack_pointer: other.stack_pointer,
             }
         } else {
             panic!("unexpected empty environment")
@@ -248,16 +270,19 @@ impl Environment {
     /// Push a new local envionment
     pub fn push(&mut self) {
         self.stack.push(HashMap::new());
+        self.stack_pointer += 1;
     }
 
     /// Pop the local-most envionment
     pub fn pop(&mut self) {
         self.stack.pop();
+        self.stack_pointer -= 1;
     }
 
     /// Define and assign to a name in the local-most scope
     pub fn define(&mut self, name: String, value: RuntimeValue) {
-        self.stack.last_mut().unwrap().insert(name, value);
+        let local_scope = &mut self.stack[self.stack_pointer];
+        local_scope.insert(name, value);
     }
 
     /// Assign to a name
@@ -268,7 +293,7 @@ impl Environment {
         token: &Token,
     ) -> Result<(), BaseError> {
         // iterate over the environment stack from local to global
-        for vars in self.stack.iter_mut().rev() {
+        for vars in self.stack[0..self.stack_pointer].iter_mut().rev() {
             if let Some(_v) = vars.get(name) {
                 vars.insert(name.to_owned(), value);
                 return Ok(());
@@ -284,7 +309,7 @@ impl Environment {
     /// Lookup a value in the runtime environment, starting with the most local environment
     /// and descending down towards the global environment.
     pub fn get(&self, name: &str, token: &Token) -> Result<RuntimeValue, BaseError> {
-        for vars in self.stack.iter().rev() {
+        for vars in self.stack[0..self.stack_pointer].iter().rev() {
             if let Some(v) = vars.get(name) {
                 return Ok(v.clone());
             }
@@ -293,6 +318,10 @@ impl Environment {
             BaseError::new(ErrorType::RuntimeError, "undefined variable")
                 .with_token(token.to_owned()),
         )
+    }
+
+    pub fn get_stack_pointer(&self) -> usize {
+        self.stack_pointer
     }
 }
 

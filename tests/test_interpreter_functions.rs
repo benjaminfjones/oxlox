@@ -106,6 +106,20 @@ fn test_interpret_sleep_of_string() {
     );
 }
 
+#[test]
+fn tese_interpret_function_scope_mutate_global() {
+    let state = interpret_program(
+        "
+        var x = 0;
+        fun mutate() {
+            x = 1;
+        }
+    ",
+    )
+    .unwrap();
+    assert_state(&state, "x", &RuntimeValue::Number(1));
+}
+
 // TODO: fix this test once closures are supported
 #[test]
 fn test_interpret_closure() {

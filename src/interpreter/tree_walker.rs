@@ -212,11 +212,12 @@ impl Interpret for Stmt {
                 Ok(RuntimeValue::Nil)
             }
             Stmt::Fun(fd) => {
+                // TODO: capture the function's closure here
+                let runtime_fn =
+                    RuntimeDeclaredFn::new(fd.clone(), interpreter.environment.get_stack_pointer());
                 interpreter.environment.define(
                     fd.name.lexeme.as_ref().unwrap().to_string(),
-                    RuntimeValue::Callable(RuntimeCallable::DeclaredFn(RuntimeDeclaredFn {
-                        declaration: fd.clone(),
-                    })),
+                    RuntimeValue::Callable(RuntimeCallable::DeclaredFn(runtime_fn)),
                 );
                 Ok(RuntimeValue::Nil)
             }
